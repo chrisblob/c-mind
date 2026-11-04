@@ -88,20 +88,92 @@
 2. Token 只保存在本机配置（未打包时在 `.userdata/config.json`，打包后在 `~/Library/Application Support/C-Mind/`），推送时拼接进 URL，不写入 `.git/config`；
 3. 「绑定 / 更新」会自动 `git init`（如尚未是仓库）并校验凭据；之后即可在面板中 **提交 → 推送 → 拉取**，查看最近 20 条历史。
 
-## 七、本地开发与打包
+## 七、自己打包：环境配置与命令
+
+### 7.1 环境要求
+
+| 依赖 | 版本 | 说明 |
+| --- | --- | --- |
+| macOS | 12+（Apple Silicon） | 当前仅产出 arm64 安装包；Intel 需自行改 `electron-builder.yml` 的 target arch |
+| Xcode Command Line Tools | 任意 | 提供 `codesign`（打包时自动补 ad-hoc 签名必需）：`xcode-select --install` |
+| Node.js | >= 20（推荐 22 LTS） | |
+| pnpm | >= 9 | 包管理器 |
+| python3 + Pillow | 可选 | 仅 `pnpm icon` 重新生成图标时需要 |
 
 ```bash
-pnpm install          # 安装依赖
-pnpm dev              # 开发模式（Vite 热更新 + Electron）
-pnpm build            # 仅构建渲染层
-pnpm dist             # 构建并打包 macOS arm64 的 .app 与 .dmg（输出到 release/）
-pnpm icon             # 重新生成应用图标（需要 python3 + Pillow）
+# 一次性环境准备（macOS）
+xcode-select --install
+brew install node@22 pnpm      # 或使用 nvm/fnm 安装 Node 后 corepack enable
+node -v && pnpm -v
 ```
 
-打包产物：`release/C-Mind-0.1.0-arm64.dmg`（拖入 Applications 即安装）。
+### 7.2 获取源码与安装依赖
 
-> **首次打开提示**：安装包未做苹果公证（无开发者证书），第一次打开若提示「无法验证开发者」，
-> 请在应用图标上**右键 → 打开**，或在「系统设置 → 隐私与安全性」中点「仍要打开」。
+```bash
+git clone https://github.com/chrisblob/c-mind.git
+cd c-mind
+pnpm install
+```
+
+> **关键**：仓库内的 `.npmrc` 设置了 `node-linker=hoisted`，**不要删除**。
+> pnpm 默认的符号链接布局会导致 electron-builder 打出的包里没有 `node_modules`
+> （运行时报 `Cannot find module 'adm-zip'` / `simple-git`）。CI 同样依赖该配置。
+
+### 7.3 常用命令
+
+| 命令 | 实际执行 | 用途 |
+| --- | --- | --- |
+| `pnpm dev` | Vite 热更新 + Electron | 日常开发 |
+| `pnpm build` | `vite build` | 只构建渲染层到 `dist/` |
+| `pnpm start` | `electron .` | 运行已构建产物 |
+| `pnpm pack` | `vite build` + `electron-builder --dir` | 只出 `.app`（`release/mac-arm64/`），不解 dmg，最快验证 |
+| `pnpm dist` | `vite build` + `electron-builder --mac` + 签名校验 | **正式打包**：`.app` + `.dmg` |
+| `pnpm icon` | 重新生成图标 | 需要 python3 + Pillow |
+
+打包产物（`pnpm dist` 后）：
+
+```
+release/mac-arm64/C-Mind.app        # 可直接运行的应用
+release/C-Mind-<版本>-arm64.dmg     # 分发用安装盘
+```
+
+### 7.4 打包后自检（建议每次发布前执行）
+
+```bash
+# 1) 签名有效（打包钩子已自动签名，这里复核）
+codesign --verify --deep --strict release/mac-arm64/C-Mind.app
+
+# 2) dmg 完整性
+hdiutil verify release/C-Mind-*.dmg
+
+# 3) 启动冒烟 + 端到端自检（默认不触碰任何 Git 远程）
+CMIND_UITEST=1 pnpm start                 # 日志中应出现 [uitest] RESULT
+```
+
+### 7.5 签名与分发说明
+
+- 默认构建使用 **ad-hoc 签名**（`scripts/after-pack.js` 钩子自动执行，无证书要求）。
+  已签名的包安装后首次打开仍会提示「无法验证开发者」：**右键 → 打开**，或执行
+  `xattr -cr /Applications/C-Mind.app`。
+- 未签名/缺签名的包在别人电脑上会直接报「**已损坏**」——所以不要去掉 afterPack 钩子。
+- 如需彻底无提示（公证），需要 Apple Developer Program（$99/年）：
+  ```bash
+  export CSC_LINK=<Developer ID Application 证书 .p12 路径或 Base64>
+  export CSC_KEY_PASSWORD=<证书密码>
+  export APPLE_ID=<Apple ID>            # 公证所需
+  export APPLE_APP_SPECIFIC_PASSWORD=<App 专用密码>
+  export APPLE_TEAM_ID=<Team ID>
+  pnpm dist
+  ```
+  并在 `electron-builder.yml` 的 `mac` 段把 `identity: null` 改为 `identity: "Developer ID Application"`。
+
+### 7.6 用 CI 打包（免本地环境）
+
+推 `v*` tag 即自动构建并上传到 GitHub Releases（`.github/workflows/release.yml`）：
+
+```bash
+git tag -f -a v0.1.0 -m "release" && git push -f origin v0.1.0
+```
 
 `examples/demo-workspace/` 内置了一套示例脑图库（产品路线图 / 团队知识库 / 学习笔记，
 含脑图互链与网页链示例），开发模式（`pnpm dev`）默认指向它，可直接体验脑图跳转。
