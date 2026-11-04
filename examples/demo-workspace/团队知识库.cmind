@@ -1,0 +1,113 @@
+{
+  "format": "c-mind",
+  "version": 1,
+  "layout": "mindMap",
+  "theme": {
+    "template": "default",
+    "config": {
+      "backgroundColor": "#fafafa",
+      "lineColor": "#748ffc",
+      "lineWidth": 2,
+      "lineStyle": "curve",
+      "root": {
+        "fillColor": "#4c6ef5",
+        "color": "#ffffff",
+        "fontSize": 16
+      },
+      "second": {
+        "fillColor": "#e8ecfe",
+        "color": "#364fc7",
+        "fontSize": 14
+      },
+      "node": {
+        "fillColor": "#ffffff",
+        "color": "#2b2f3a",
+        "fontSize": 13
+      }
+    }
+  },
+  "view": null,
+  "root": {
+    "data": {
+      "text": "团队知识库"
+    },
+    "children": [
+      {
+        "data": {
+          "text": "研发规范"
+        },
+        "children": [
+          {
+            "data": {
+              "text": "分支模型 Git Flow"
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "Code Review 清单"
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "发布流程"
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "data": {
+          "text": "设计资源"
+        },
+        "children": [
+          {
+            "data": {
+              "text": "图标库"
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "配色规范"
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "组件库"
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "data": {
+          "text": "常见问题"
+        },
+        "children": [
+          {
+            "data": {
+              "text": "如何申请权限"
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "如何回滚线上"
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "data": {
+          "text": "回到产品路线图",
+          "hyperlink": "cmind://open?path=%E4%BA%A7%E5%93%81%E8%B7%AF%E7%BA%BF%E5%9B%BE.cmind"
+        },
+        "children": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+release/
+.userdata/
+.pnpm-store/
+*.log
+.DS_Store
+.idea/

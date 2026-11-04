@@ -1,0 +1,26 @@
+appId: app.cmind.desktop
+productName: C-Mind
+copyright: Copyright © 2026 Chris
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - electron/**
+  - dist/**
+
+asar: true
+
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: dir
+      arch: [arm64]
+  identity: null
+
+dmg:
+  title: C-Mind ${version}

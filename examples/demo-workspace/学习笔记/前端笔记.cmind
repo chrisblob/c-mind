@@ -1,0 +1,115 @@
+{
+  "format": "c-mind",
+  "version": 1,
+  "layout": "mindMap",
+  "theme": {
+    "template": "default",
+    "config": {
+      "backgroundColor": "#fafafa",
+      "lineColor": "#748ffc",
+      "lineWidth": 2,
+      "lineStyle": "curve",
+      "root": {
+        "fillColor": "#4c6ef5",
+        "color": "#ffffff",
+        "fontSize": 16
+      },
+      "second": {
+        "fillColor": "#e8ecfe",
+        "color": "#364fc7",
+        "fontSize": 14
+      },
+      "node": {
+        "fillColor": "#ffffff",
+        "color": "#2b2f3a",
+        "fontSize": 13
+      }
+    }
+  },
+  "view": null,
+  "root": {
+    "data": {
+      "text": "前端学习笔记"
+    },
+    "children": [
+      {
+        "data": {
+          "text": "JavaScript"
+        },
+        "children": [
+          {
+            "data": {
+              "text": "闭包"
+            },
+            "children": [
+              {
+                "data": {
+                  "text": "作用域链"
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "data": {
+              "text": "事件循环"
+            },
+            "children": [
+              {
+                "data": {
+                  "text": "宏任务 / 微任务"
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "data": {
+          "text": "Vue 3"
+        },
+        "children": [
+          {
+            "data": {
+              "text": "响应式原理"
+            },
+            "children": [
+              {
+                "data": {
+                  "text": "Proxy"
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "data": {
+              "text": "组合式 API"
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "data": {
+          "text": "工程化"
+        },
+        "children": [
+          {
+            "data": {
+              "text": "Vite"
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "pnpm"
+            },
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

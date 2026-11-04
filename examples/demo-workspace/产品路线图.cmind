@@ -1,0 +1,180 @@
+{
+  "format": "c-mind",
+  "version": 1,
+  "layout": "logicalStructure",
+  "root": {
+    "data": {
+      "text": "C-Mind 产品路线图",
+      "expand": true,
+      "uid": "3b0ad92c-9b53-4a5b-bce9-fdf1865b8057",
+      "isActive": false
+    },
+    "children": [
+      {
+        "data": {
+          "text": "v0.1 已完成",
+          "uid": "270cc29c-5e71-4793-ba20-d127349b5f2c",
+          "expand": true,
+          "isActive": false
+        },
+        "children": [
+          {
+            "data": {
+              "text": "多层级脑图",
+              "uid": "02509c2c-cf17-484e-a646-3ed4675d195b",
+              "expand": true,
+              "isActive": false
+            },
+            "children": [
+              {
+                "data": {
+                  "text": "Xmind 同款快捷键",
+                  "uid": "f3e78540-fd34-40df-89e0-93caecf52626",
+                  "expand": true,
+                  "isActive": false
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "data": {
+              "text": "节点嵌入图片 / 网页链接",
+              "uid": "5c1f7018-926a-4a24-925f-ecb1183d4b69",
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "脑图之间跳转（新标签页）",
+              "uid": "7da2dbef-453d-49a0-b433-985d8ca091d0",
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "文件树管理 + Git 绑定",
+              "uid": "18f26538-96c0-4c45-93c6-df87b43c094a",
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "data": {
+          "text": "v0.2 计划",
+          "uid": "705d4612-524f-4906-b014-0cc834fd4767",
+          "expand": true,
+          "isActive": false
+        },
+        "children": [
+          {
+            "data": {
+              "text": "富文本节点",
+              "uid": "d19c0b23-9102-4be7-8ec1-298a74ba067b",
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "大纲视图 / 全局搜索",
+              "uid": "024d1cb4-26d4-4bca-83b5-2c2ec7465fe8",
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
+          },
+          {
+            "data": {
+              "text": "自动定时备份",
+              "uid": "fe29ee83-2842-4ec1-a462-a97e69427af1",
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "data": {
+          "text": "参考文档",
+          "hyperlink": "https://github.com/wanglin2/mind-map",
+          "hyperlinkTitle": "simple-mind-map 开源内核",
+          "uid": "78db529a-0517-41bf-9301-75a28fefa7b4",
+          "expand": true,
+          "isActive": false
+        },
+        "children": []
+      },
+      {
+        "data": {
+          "text": "团队知识库",
+          "hyperlink": "cmind://open?path=%E5%9B%A2%E9%98%9F%E7%9F%A5%E8%AF%86%E5%BA%93.cmind",
+          "hyperlinkTitle": "团队知识库",
+          "uid": "6eff6c79-f70f-47b3-87b6-4ae01a0084ec",
+          "expand": true,
+          "isActive": false
+        },
+        "children": []
+      }
+    ],
+    "smmVersion": "0.14.0-fix.3"
+  },
+  "theme": {
+    "template": "default",
+    "config": {
+      "backgroundColor": "#fafafa",
+      "lineColor": "#748ffc",
+      "lineWidth": 2,
+      "lineStyle": "curve",
+      "root": {
+        "fillColor": "#4c6ef5",
+        "color": "#ffffff",
+        "fontSize": 16
+      },
+      "second": {
+        "fillColor": "#e8ecfe",
+        "color": "#364fc7",
+        "fontSize": 14
+      },
+      "node": {
+        "fillColor": "#ffffff",
+        "color": "#2b2f3a",
+        "fontSize": 13
+      }
+    }
+  },
+  "view": {
+    "transform": {
+      "scaleX": 1,
+      "scaleY": 1,
+      "shear": 0,
+      "rotate": 0,
+      "translateX": 0,
+      "translateY": 0,
+      "originX": 0,
+      "originY": 0,
+      "a": 1,
+      "b": 0,
+      "c": 0,
+      "d": 1,
+      "e": 0,
+      "f": 0
+    },
+    "state": {
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "sx": 0,
+      "sy": 0
+    }
+  }
+}
