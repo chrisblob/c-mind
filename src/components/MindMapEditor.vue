@@ -458,11 +458,15 @@ async function doImport() {
     if (!res) return
     const tree = parseImportText(res.kind, res.text)
     if (tree.data && !String(tree.data.text || '').trim()) tree.data.text = res.name || '导入脑图'
-    // 需求：导入的内容始终在「当前选定文件夹」下新建一个脑图文件，而不是并入当前打开的脑图
-    const dir = store.currentDir || store.workspace
-    const abs = await importMapAsFile(dir, res.name || String(tree.data.text || '导入脑图'), tree)
+    // 需求：导入的内容新建为一张脑图文件，不并入当前打开的脑图。
+    // 位置 = 当前打开脑图所在的文件夹（未打开则用侧栏选定文件夹）；文件名 = 导入图的根节点名称
+    const dir = props.tab.path
+      ? props.tab.path.replace(/[\\/][^\\/]+$/, '')
+      : (store.currentDir || store.workspace)
+    const name = String((tree.data && tree.data.text) || '').trim() || res.name || '导入脑图'
+    const abs = await importMapAsFile(dir, name, tree)
     const dirLabel = dir === store.workspace ? '根目录' : dir.replace(/\\/g, '/').split('/').pop()
-    toast(`已导入「${res.name || ''}」到「${dirLabel}」：${abs.replace(/\\/g, '/').split('/').pop()}（已在新标签打开）`, 'ok')
+    toast(`已导入到「${dirLabel}」：${abs.replace(/\\/g, '/').split('/').pop()}（已在新标签打开）`, 'ok')
   } catch (err) {
     toast('导入失败：' + (err.message || err), 'error')
   }

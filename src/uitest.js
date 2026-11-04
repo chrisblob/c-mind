@@ -84,9 +84,6 @@ window.__cmindUITest = async function (mode) {
       const mapRow = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes('产品路线图'))
       if (mapRow) mapRow.click()
       await new Promise(r => setTimeout(r, 2600))
-      const folderRow = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes('学习笔记'))
-      if (folderRow) folderRow.click()
-      await new Promise(r => setTimeout(r, 1200))
       const S = window.__cmindStore
       const M = window.__cmindMap
       if (!M || !window.__cmindImport) { log('insert', { error: 'no map or hook' }); return out }
@@ -99,6 +96,7 @@ window.__cmindUITest = async function (mode) {
       const tab = S.tabs.find(t => t.id === S.activeId)
       log('import-as-new-file', {
         dir: String(dir).split('/').pop(),
+        dirIsMapFolder: !!(tab && tab.path.split('/').slice(0, -1).join('/') === dir),
         beforeTabs,
         afterTabs: S.tabs.length,
         oldTabStillOpen: S.tabs.some(t => t.name === beforeName),
