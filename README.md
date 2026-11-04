@@ -1,6 +1,13 @@
 # C-Mind 心图 🧠
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20arm64-lightgrey.svg)]()
+[![Electron](https://img.shields.io/badge/Electron-45-47848f.svg)](https://www.electronjs.org/)
+[![CI](https://github.com/chrisblob/c-mind/actions/workflows/ci.yml/badge.svg)](https://github.com/chrisblob/c-mind/actions/workflows/ci.yml)
+
 > 本地优先的 macOS 桌面脑图工具 —— 把思维导图当「文件」来管理，把知识用「链接」串起来。
+
+📥 [下载最新版](https://github.com/chrisblob/c-mind/releases) · 🐛 [反馈问题](https://github.com/chrisblob/c-mind/issues) · 📖 [更新日志](CHANGELOG.md)
 
 ![C-Mind icon](build/icon-512.png)
 
@@ -25,7 +32,7 @@
 - **C 形弧线**：右侧留出开口 —— 它既是字母 **C**，也是导图分支的生长轨迹，开口代表思维永远向新方向开放；
 - **三个分支节点 + 连接线**：放射式的思维导图结构，也是「连接」语义的具象化。
 
-生成方式可复现：`python3 scripts/gen-icon.py && bash scripts/make-icns.sh`。
+生成方式可复现：`pnpm icon`（等价于 `python3 scripts/gen-icon.py && bash scripts/make-icns.sh`，需要 python3 + Pillow）。
 
 ## 三、功能
 
@@ -44,8 +51,6 @@
 | 两种管理方式 | **标签页（查看模式）**：多开、跳转、只读查看模式；**文件树（管理模式）**：文件夹 + 文件、新建 / 重命名 / 移动（可拖拽）/ 删除（进废纸篓） |
 | Git / GitHub 绑定 | 工作区一键 `git init` + 绑定远程仓库（HTTPS + PAT），提交 / 推送 / 拉取 / 历史 一面板搞定 |
 | 自动保存 | 编辑后自动落盘，`⌘S` 随时手动保存 |
-| 空白清理 | 带图片/链接的节点会自动清理多余空白字符（导入的 `\n` 空标题等） |
-| 导出 | PNG / SVG / XMind / JSON |
 | 主题 | 经典蓝 / 青竹绿 / 暖阳橙 / 暗夜紫 四套预设配色 |
 
 ## 四、快捷键（与 Xmind 一致）
@@ -117,6 +122,17 @@ pnpm icon             # 重新生成应用图标（需要 python3 + Pillow）
 - [ ] 多工作区切换、iCloud 目录支持
 - [ ] 自动定时 commit（知识库时间机器）
 
----
+## 十、下载安装
 
-License: MIT
+- **安装包**：[Releases](https://github.com/chrisblob/c-mind/releases) 下载 `C-Mind-<version>-arm64.dmg`，拖入「应用程序」即可
+- **从源码构建**：见「七、本地开发与打包」
+- 未做代码签名/公证：首次打开若提示无法验证开发者，请右键 → 打开，或到「系统设置 → 隐私与安全性」点「仍要打开」
+
+## 十一、参与贡献
+
+欢迎 Issue 与 PR！开发环境、目录结构、提交规范、自测方式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
+
+## 十二、许可证
+
+[MIT](LICENSE) © 2026 Chris
