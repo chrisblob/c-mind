@@ -80,31 +80,55 @@ window.__cmindUITest = async function (mode) {
         children: (tree.children || []).map(c => (c.data || {}).text).slice(0, 6),
         total: (tree.children || []).reduce((n, c) => n + 1 + (c.children || []).length, 0)
       })
-      // 端到端：选定「学习笔记」文件夹 → 走 UI 导入全链路 → 应在该文件夹新建脑图文件并打开新标签
-      const mapRow = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes('产品路线图'))
-      if (mapRow) mapRow.click()
-      await new Promise(r => setTimeout(r, 2600))
+      // 端到端：走侧栏「📥 导入」全链路。规则 = 选中脑图→其所在文件夹；选中文件夹→该文件夹
       const S = window.__cmindStore
-      const M = window.__cmindMap
-      if (!M || !window.__cmindImport) { log('insert', { error: 'no map or hook' }); return out }
-      const beforeTabs = S.tabs.length
-      const dir = S.currentDir
-      const beforeChildren = (M.getData().children || []).length
-      const beforeName = S.tabs.find(t => t.id === S.activeId).name
+      if (!window.__cmindImport) { log('insert', { error: 'no hook' }); return out }
+      const results = []
+      const pick = async (kw) => {
+        const row = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes(kw))
+        if (row) row.click()
+        await new Promise(r => setTimeout(r, 2200))
+        return S.currentDir
+      }
+      // 场景1：选中根目录下的脑图 产品路线图 → 应导入到根目录
+      let dir = await pick('产品路线图')
+      let beforeTabs = S.tabs.length
       await window.__cmindImport()
-      await new Promise(r => setTimeout(r, 1500))
-      const tab = S.tabs.find(t => t.id === S.activeId)
-      log('import-as-new-file', {
+      await new Promise(r => setTimeout(r, 1600))
+      let tab = S.tabs.find(t => t.id === S.activeId)
+      results.push({
+        scene: '选中脑图(根目录) → 导入到其所在文件夹',
         dir: String(dir).split('/').pop(),
-        dirIsMapFolder: !!(tab && tab.path.split('/').slice(0, -1).join('/') === dir),
-        beforeTabs,
-        afterTabs: S.tabs.length,
-        oldTabStillOpen: S.tabs.some(t => t.name === beforeName),
-        activeTabName: tab && tab.name,
-        activePathInDir: !!(tab && tab.path.startsWith(dir + '/')),
         fileName: tab && tab.path.split('/').pop(),
-        currentMapUnchanged: (M.getData().children || []).length === beforeChildren
+        activePathInDir: !!(tab && tab.path.startsWith(dir + '/')),
+        tabs: beforeTabs + '→' + S.tabs.length
       })
+      // 场景2：选中子文件夹 学习笔记 → 应导入到该文件夹
+      dir = await pick('学习笔记')
+      await window.__cmindImport()
+      await new Promise(r => setTimeout(r, 1600))
+      tab = S.tabs.find(t => t.id === S.activeId)
+      results.push({
+        scene: '选中文件夹(学习笔记) → 导入到该文件夹',
+        dir: String(dir).split('/').pop(),
+        fileName: tab && tab.path.split('/').pop(),
+        activePathInDir: !!(tab && tab.path.startsWith(dir + '/')),
+        tabs: beforeTabs + '→' + S.tabs.length
+      })
+      log('import-as-new-file', results)
+      // 最新导入文件内容校验（图片/链接落盘）
+      if (tab) {
+        await new Promise(r => setTimeout(r, 800))
+        const raw = String(await window.cmind.invoke('fs:read', tab.path))
+        const doc = JSON.parse(raw)
+        const flat = []
+        ;(function w(n) { flat.push(n); (n.children || []).forEach(w) })(doc.root)
+        log('new-file-check', {
+          rootText: doc.root.data.text,
+          imageNodes: flat.filter(n => n.data && n.data.image && String(n.data.image.url || '').startsWith('data:')).length,
+          links: flat.filter(n => n.data && n.data.hyperlink).map(n => String(n.data.hyperlink).slice(0, 24))
+        })
+      }
       // 新文件内容：图片/链接完整落盘
       if (tab) {
         await new Promise(r => setTimeout(r, 800))
@@ -117,8 +141,6 @@ window.__cmindUITest = async function (mode) {
           imageNodes: flat.filter(n => n.data && n.data.image && String(n.data.image.url || '').startsWith('data:')).length,
           links: flat.filter(n => n.data && n.data.hyperlink).map(n => String(n.data.hyperlink).slice(0, 24))
         })
-        const nd = M.getData()
-        log('render-check', { rootText: nd.data.text, total: (function c(n){return 1+(n.children||[]).reduce((a,b)=>a+c(b),0)})(nd) })
       }
     } catch (e) {
       log('import-fail', { error: String(e && e.message || e) })

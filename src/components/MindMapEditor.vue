@@ -17,7 +17,7 @@ import {
   store, api, toast, uiContextMenu, MIND_EXT, syncRenameMap, sanitizeFileName, importMapAsFile
 } from '../store.js'
 import {
-  extToKind, parseImportText, buildFreeMind, buildOpml, buildMarkdown, dataUrlToBase64
+  extToKind, buildFreeMind, buildOpml, buildMarkdown, dataUrlToBase64
 } from '../formats.js'
 
 // 插件只需注册一次
@@ -192,7 +192,6 @@ onMounted(async () => {
   })
   // 点击节点里的图片 → 直接弹窗看大图（可缩放）
   mindMap.on('node_img_click', (node) => { openImageViewer(node) })
-  window.__cmindImport = doImport // 自检钩子
   mindMap.on('node_img_dblclick', (node) => { openImageViewer(node) })
   mindMap.on('scale', (s) => { scale.value = s })
   mindMap.on('node_tree_render_end', () => { loading = false })
@@ -452,25 +451,6 @@ function cleanDocMediaTexts(root) {
 }
 
 /* ---------- 导入：XMind / FreeMind / OPML / Markdown / JSON ---------- */
-async function doImport() {
-  try {
-    const res = await api('import:open')
-    if (!res) return
-    const tree = parseImportText(res.kind, res.text)
-    if (tree.data && !String(tree.data.text || '').trim()) tree.data.text = res.name || '导入脑图'
-    // 需求：导入的内容新建为一张脑图文件，不并入当前打开的脑图。
-    // 位置 = 当前打开脑图所在的文件夹（未打开则用侧栏选定文件夹）；文件名 = 导入图的根节点名称
-    const dir = props.tab.path
-      ? props.tab.path.replace(/[\\/][^\\/]+$/, '')
-      : (store.currentDir || store.workspace)
-    const name = String((tree.data && tree.data.text) || '').trim() || res.name || '导入脑图'
-    const abs = await importMapAsFile(dir, name, tree)
-    const dirLabel = dir === store.workspace ? '根目录' : dir.replace(/\\/g, '/').split('/').pop()
-    toast(`已导入到「${dirLabel}」：${abs.replace(/\\/g, '/').split('/').pop()}（已在新标签打开）`, 'ok')
-  } catch (err) {
-    toast('导入失败：' + (err.message || err), 'error')
-  }
-}
 
 /* ---------- 插入图片 / 链接 / 备注 ---------- */
 function openImageDialog() {
@@ -639,7 +619,6 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
       <button class="icon-btn" data-tip="添加上级节点" data-key="⇧Tab" @click="addParent">＋上级</button>
       <button class="icon-btn" data-tip="删除节点" data-key="⌫" @click="removeNode">🗑</button>
       <div class="sep"></div>
-      <button class="icon-btn" data-tip="导入（XMind / FreeMind / OPML / Markdown / JSON）" @click="doImport">📥</button>
       <button class="icon-btn" data-tip="插入图片" @click="openImageDialog">🖼</button>
       <button class="icon-btn" data-tip="查看图片大图（可缩放）" :disabled="!hasImageNode" @click="openImageViewer(mindMap && mindMap.renderer.activeNodeList[0])">🔍</button>
       <button class="icon-btn" data-tip="插入链接（网页/其他脑图）" @click="openLinkDialog">🔗</button>

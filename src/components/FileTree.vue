@@ -5,7 +5,7 @@
  */
 import { computed } from 'vue'
 import TreeNode from './TreeNode.vue'
-import { store, chooseWorkspace, createMap, createDir, uiPrompt, dirLabel } from '../store.js'
+import { store, chooseWorkspace, createMap, createDir, doImport, uiPrompt, dirLabel } from '../store.js'
 
 const wsName = computed(() => store.workspace.split('/').filter(Boolean).pop() || '未设置工作区')
 
@@ -21,6 +21,7 @@ async function onNewFolder() {
   if (!name) return
   await createDir(targetDir(), name)
 }
+window.__cmindImport = doImport // 自检钩子
 </script>
 
 <template>
@@ -57,6 +58,7 @@ async function onNewFolder() {
         <span class="flex-1"></span>
         <button class="mini-btn" data-tip="新建脑图（在当前目录）" data-key="⌘N" @click="onNewMap">🧠＋</button>
         <button class="mini-btn" data-tip="新建文件夹（在当前目录）" @click="onNewFolder">📁＋</button>
+        <button class="mini-btn" data-tip="导入（XMind / FreeMind / OPML / Markdown / JSON）" @click="doImport">📥</button>
       </div>
       <div class="tree-hint" :data-tip="'新建位置：' + dirLabel(store.currentDir)">
         <span class="hint-label">新建于</span>

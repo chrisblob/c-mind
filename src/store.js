@@ -2,6 +2,7 @@
  * C-Mind 全局状态与 UI 服务（prompt / confirm / contextMenu / toast）
  */
 import { reactive } from 'vue'
+import { parseImportText } from './formats.js'
 
 export const MIND_EXT = '.cmind'
 
@@ -159,6 +160,24 @@ export async function importMapAsFile(dirPath, name, tree) {
   await refreshTree()
   await openMap(abs)
   return abs
+}
+
+/** 导入外部文件 → 在「当前选定文件夹」（或选中脑图所在文件夹）新建一张脑图并打开 */
+export async function doImport() {
+  try {
+    const res = await api('import:open')
+    if (!res) return
+    const tree = parseImportText(res.kind, res.text)
+    if (tree.data && !String(tree.data.text || '').trim()) tree.data.text = res.name || '导入脑图'
+    // 位置规则与“新建于”一致：选中文件夹 → 该文件夹；选中脑图 → 其所在文件夹；都没有 → 根目录
+    const dir = store.currentDir || store.workspace
+    const name = String((tree.data && tree.data.text) || '').trim() || res.name || '导入脑图'
+    const abs = await importMapAsFile(dir, name, tree)
+    const dirLabel = dir === store.workspace ? '根目录' : dir.replace(/\\/g, '/').split('/').pop()
+    toast(`已导入到「${dirLabel}」：${abs.replace(/\\/g, '/').split('/').pop()}（已在新标签打开）`, 'ok')
+  } catch (err) {
+    toast('导入失败：' + (err.message || err), 'error')
+  }
 }
 
 export async function createDir(dirPath, name) {
