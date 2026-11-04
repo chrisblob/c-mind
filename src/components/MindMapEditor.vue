@@ -14,7 +14,7 @@ import Export from 'simple-mind-map/src/plugins/Export.js'
 import ExportXMind from 'simple-mind-map/src/plugins/ExportXMind.js'
 import KeyboardNavigation from 'simple-mind-map/src/plugins/KeyboardNavigation.js'
 import {
-  store, api, toast, uiContextMenu, MIND_EXT, syncRenameMap, sanitizeFileName
+  store, api, toast, uiContextMenu, MIND_EXT, syncRenameMap, sanitizeFileName, importMapAsFile
 } from '../store.js'
 import {
   extToKind, parseImportText, buildFreeMind, buildOpml, buildMarkdown, dataUrlToBase64
@@ -192,6 +192,7 @@ onMounted(async () => {
   })
   // 点击节点里的图片 → 直接弹窗看大图（可缩放）
   mindMap.on('node_img_click', (node) => { openImageViewer(node) })
+  window.__cmindImport = doImport // 自检钩子
   mindMap.on('node_img_dblclick', (node) => { openImageViewer(node) })
   mindMap.on('scale', (s) => { scale.value = s })
   mindMap.on('node_tree_render_end', () => { loading = false })
@@ -456,24 +457,12 @@ async function doImport() {
     const res = await api('import:open')
     if (!res) return
     const tree = parseImportText(res.kind, res.text)
-    const gd = mindMap.getData() // 节点树本身：{ data, children }
-    const isEmptyMap = !props.tab.dirty && !(gd.children && gd.children.length)
-    if (isEmptyMap) {
-      // 空白脑图 → 导入内容直接作为整张图（文件名保持不变，不触发改名同步）
-      mindMap.setData(tree)
-      mindMap.render()
-      rootTextAtLoad = tree.data.text || ''
-      saveNow()
-      toast(`已导入「${res.name}」（${String(res.ext).toUpperCase()}）为当前脑图`, 'ok')
-    } else {
-      // 追加为当前选中节点（未选中则为根节点）的子树
-      const target = mindMap.renderer.activeNodeList[0] || mindMap.renderer.root
-      mindMap.execCommand(
-        'INSERT_CHILD_NODE', false, [target],
-        { ...tree.data }, tree.children || []
-      )
-      toast(`已导入「${res.name}」为「${(target.getData('text') || '').slice(0, 12)}」的子树`, 'ok')
-    }
+    if (tree.data && !String(tree.data.text || '').trim()) tree.data.text = res.name || '导入脑图'
+    // 需求：导入的内容始终在「当前选定文件夹」下新建一个脑图文件，而不是并入当前打开的脑图
+    const dir = store.currentDir || store.workspace
+    const abs = await importMapAsFile(dir, res.name || String(tree.data.text || '导入脑图'), tree)
+    const dirLabel = dir === store.workspace ? '根目录' : dir.replace(/\\/g, '/').split('/').pop()
+    toast(`已导入「${res.name || ''}」到「${dirLabel}」：${abs.replace(/\\/g, '/').split('/').pop()}（已在新标签打开）`, 'ok')
   } catch (err) {
     toast('导入失败：' + (err.message || err), 'error')
   }

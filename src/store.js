@@ -150,6 +150,17 @@ export async function createMap(dirPath, name) {
   return abs
 }
 
+/** 把导入的节点树作为新脑图文件写入目录（fs:createFile 自动重名加 -1/-2），并打开 */
+export async function importMapAsFile(dirPath, name, tree) {
+  const title = (tree && tree.data && tree.data.text) || name || '导入脑图'
+  const doc = newMapDoc(title)
+  doc.root = tree
+  const abs = await api('fs:createFile', dirPath, sanitizeFileName(name || title), JSON.stringify(doc, null, 2))
+  await refreshTree()
+  await openMap(abs)
+  return abs
+}
+
 export async function createDir(dirPath, name) {
   await api('fs:createDir', dirPath, name)
   await refreshTree()

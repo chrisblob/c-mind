@@ -53,10 +53,12 @@ export function normalizeNodeTree(obj) {
   if (obj.root && obj.root.data) obj = obj.root
   // simple-mind-map 节点
   if (obj.data && Array.isArray(obj.children)) {
-    return {
-      data: { text: String(obj.data.text || '') },
-      children: (obj.children || []).map(normalizeNodeTree)
+    const d = obj.data
+    const data = { text: String(d.text || '') }
+    for (const k of ['image', 'hyperlink', 'hyperlinkTitle', 'note']) {
+      if (d[k] !== undefined && d[k] !== null && d[k] !== '') data[k] = d[k]
     }
+    return { data, children: (obj.children || []).map(normalizeNodeTree) }
   }
   throw new Error('无法识别的 JSON 结构')
 }
