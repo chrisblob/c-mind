@@ -581,8 +581,19 @@ function createWindow() {
             const imgEl = node.group.node.querySelector('image')
             if (!imgEl) return 'no img el'
             imgEl.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 700, clientY: 400 }))
-            await sleep(1000)
-            if (!document.querySelector('.img-viewer')) return 'viewer not open'
+            await sleep(1200)
+            const vw = document.querySelector('.img-viewer')
+            if (!vw) return 'viewer not open'
+            const panel = vw.querySelector('.viewer-panel')
+            const stage = vw.querySelector('.viewer-stage')
+            const dbg = {
+              win: window.innerWidth + 'x' + window.innerHeight,
+              panel: panel ? panel.clientWidth + 'x' + panel.clientHeight : 'none',
+              stage: stage ? stage.clientWidth + 'x' + stage.clientHeight : 'none',
+              pct: (vw.querySelector('.vpct') || {}).textContent,
+              transform: (vw.querySelector('.viewer-stage img') || { style: {} }).style.transform
+            }
+            return JSON.stringify(dbg)
             const plus = [...document.querySelectorAll('.img-viewer .viewer-bar button')].find(x => x.textContent.trim() === '＋')
             plus && plus.click(); await sleep(300)
             return 'ok'

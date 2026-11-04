@@ -14,7 +14,14 @@ window.__cmindUITest = async function (mode) {
     const q = (s) => document.querySelector(s)
     const qa = (s) => [...document.querySelectorAll(s)]
     const setInput = (el, val) => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(el, val); el.dispatchEvent(new Event('input', { bubbles: true })) }
-    const submitModal = async (name) => { setInput(q('.modal input'), name); await sleepF(80); qa('.modal-foot button').find(x => x.textContent.trim() === '确定').click(); await sleepF(900) }
+    const submitModal = async (name) => {
+      const inp = q('.modal input')
+      if (!inp) throw new Error('modal input not found (button may not have opened)')
+      setInput(inp, name); await sleepF(80)
+      const ok = qa('.modal-foot button').find(x => x.textContent.trim() === '确定')
+      if (!ok) throw new Error('modal confirm not found')
+      ok.click(); await sleepF(900)
+    }
     const ufPath = S.workspace + '/徐晓赫/测试二级文件夹/测试脑图.cmind'
     await openMap(ufPath)
     let waited = 0
@@ -57,7 +64,7 @@ window.__cmindUITest = async function (mode) {
     zoomBtn && zoomBtn.click(); await sleepF(120); zoomBtn && zoomBtn.click(); await sleepF(300)
     log('canvas-zoom', { scaleBefore, scaleAfter: M.view.scale, zoomed: M.view.scale > scaleBefore })
     // 树排序：同一文件夹连建两个
-    const sideBtn = (kw) => qa('.filetree button').find(b => b.textContent.includes(kw))
+    const sideBtn = (kw) => qa('.filetree .mini-btn').find(b => (b.getAttribute('data-tip') || '').includes(kw) || b.textContent.includes(kw))
     for (let i = 0; i < 30 && !qa('.tree-row').length; i++) await sleepF(200)
     const dirRow = qa('.tree-row').find(r => r.textContent.includes('学习笔记'))
     dirRow && dirRow.click(); await sleepF(300)
@@ -109,14 +116,16 @@ window.__cmindUITest = async function (mode) {
     } catch (e) { out.steps.push({ name: 'probe-' + tag, err: String(e.message || e) }) }
   }
   await probeFile('start')
-  const sideBtn = (kw) => [...document.querySelectorAll('.filetree button')].find(b => b.textContent.includes(kw))
+  const sideBtn = (kw) => [...document.querySelectorAll('.filetree .mini-btn')].find(b => (b.getAttribute('data-tip') || '').includes(kw) || b.textContent.includes(kw))
   const clickBtnInModal = (label) => {
     const b = qa('.modal-foot button').find(x => x.textContent.trim() === label)
     if (b) b.click()
     return !!b
   }
   const submitModal = async (name) => {
-    setInput(q('.modal input'), name)
+    const inp = q('.modal input')
+    if (!inp) throw new Error('modal input not found (button may not have opened)')
+    setInput(inp, name)
     await sleep(80)
     clickBtnInModal('确定')
     await sleep(900)

@@ -51,6 +51,17 @@ async function onNewFolder() {
     </div>
 
     <div class="filetree">
+      <!-- 文件区标题行：新建操作固定在顶部，树很长也不会被滚走 -->
+      <div class="tree-toolbar">
+        <span class="tree-title">文件</span>
+        <span class="flex-1"></span>
+        <button class="mini-btn" data-tip="新建脑图（在当前目录）" data-key="⌘N" @click="onNewMap">🧠＋</button>
+        <button class="mini-btn" data-tip="新建文件夹（在当前目录）" @click="onNewFolder">📁＋</button>
+      </div>
+      <div class="tree-hint" :data-tip="'新建位置：' + dirLabel(store.currentDir)">
+        <span class="hint-label">新建于</span>
+        <span class="hint-dir">{{ dirLabel(store.currentDir) }}</span>
+      </div>
       <div v-if="!store.tree.length" class="tree-empty">
         <div>工作区还是空的</div>
         <div style="display:flex; flex-direction:column; gap:6px; align-items:stretch">
@@ -59,13 +70,6 @@ async function onNewFolder() {
         </div>
       </div>
       <TreeNode v-for="n in store.tree" :key="n.path" :node="n" :depth="0" />
-      <div v-if="store.tree.length" style="padding:10px 8px; display:flex; gap:4px">
-        <button style="flex:1; padding:4px 2px" @click="onNewMap">＋ 脑图</button>
-        <button style="flex:1; padding:4px 2px" @click="onNewFolder">＋ 文件夹</button>
-      </div>
-      <div v-if="store.tree.length" class="hint" style="text-align:center; font-size:11px">
-        新建于：{{ dirLabel(store.currentDir) }}（点击文件夹可切换）
-      </div>
     </div>
   </aside>
 </template>

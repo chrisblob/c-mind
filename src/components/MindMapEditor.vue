@@ -6,7 +6,7 @@
  * - 主题预设、布局切换、缩放适配、导出 PNG/SVG/XMind/JSON/FreeMind/OPML/Markdown、导入 XMind/FreeMind/OPML/Markdown/JSON、只读查看模式
  * - 自动保存 + ⌘S 手动保存
  */
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import MindMap from 'simple-mind-map'
 import Drag from 'simple-mind-map/src/plugins/Drag.js'
 import Select from 'simple-mind-map/src/plugins/Select.js'
@@ -335,14 +335,18 @@ function thumbSize(nat, fallbackW, fallbackH) {
 async function openImageViewer(node) {
   const d = node && typeof node.getData === 'function' ? node.getData() : null
   if (!d || !d.image) { toast('当前节点没有图片', 'error'); return }
-  const v = { url: d.image, title: d.imageTitle || d.text || '', scale: 1, x: 0, y: 0, px: 0, py: 0, natW: 0, natH: 0 }
-  imageViewer.value = v
+  // 先取到原始尺寸再显示，避免出现「先 100% 再跳成适合窗口」的闪动
   const nat = await probeImageSize(d.image)
-  if (nat && imageViewer.value === v) {
-    v.natW = nat.w
-    v.natH = nat.h
-    viewerFit()
+  const v = {
+    url: d.image,
+    title: d.imageTitle || d.text || '',
+    scale: 1, x: 0, y: 0, px: 0, py: 0,
+    natW: nat ? nat.w : 1200,
+    natH: nat ? nat.h : 800
   }
+  imageViewer.value = v
+  await nextTick()
+  viewerFit()
 }
 function closeImageViewer() { imageViewer.value = null }
 function viewerZoom(delta) {
@@ -351,12 +355,13 @@ function viewerZoom(delta) {
   v.scale = Math.min(IMG_VIEW_SCALE_MAX, Math.max(IMG_VIEW_SCALE_MIN, +(v.scale + delta).toFixed(3)))
 }
 function viewerFit() {
+  // 铺满弹窗：等比缩放到刚好占满可用区域（小图会放大、大图会缩小）
   const v = imageViewer.value
   if (!v || !v.natW) return
   const st = document.querySelector('.img-viewer .viewer-stage')
-  const sw = (st ? st.clientWidth : window.innerWidth * 0.7) * 0.94
-  const sh = (st ? st.clientHeight : window.innerHeight * 0.6) * 0.94
-  v.scale = Math.max(IMG_VIEW_SCALE_MIN, Math.min(2, Math.min(sw / v.natW, sh / v.natH)))
+  const sw = (st ? st.clientWidth : window.innerWidth * 0.7) * 0.96
+  const sh = (st ? st.clientHeight : window.innerHeight * 0.6) * 0.96
+  v.scale = Math.max(IMG_VIEW_SCALE_MIN, Math.min(IMG_VIEW_SCALE_MAX, Math.min(sw / v.natW, sh / v.natH)))
   v.x = 0
   v.y = 0
 }
