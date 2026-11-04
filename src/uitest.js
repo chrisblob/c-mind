@@ -25,29 +25,26 @@ window.__cmindUITest = async function (mode) {
     const node = M.renderer.root.children[0]
     const imgEl = node.group.node.querySelector('image')
     const before = { ...(node.getData('imageSize') || {}) }
-    // 悬停图片 → 出现调整手柄
+    // 画布内应为缩略图，且不再提供拖拽放大手柄
     imgEl.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 800, clientY: 500 }))
-    await sleepF(400)
-    const handle = q('.node-img-handle')
-    const btn = q('.node-image-resize')
-    const dragLog = { handleShown: !!(handle && handle.style.display !== 'none'), btnFound: !!btn, before }
-    if (btn) {
-      const r = btn.getBoundingClientRect()
-      const sx = r.left + r.width / 2, sy = r.top + r.height / 2
-      btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: sx, clientY: sy }))
-      // 拖动 +140/+100
-      const svgRoot = q('.canvas-holder svg') || document.body
-      for (let i = 1; i <= 6; i++) {
-        svgRoot.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX: sx + i * 25, clientY: sy + i * 18 }))
-        await sleepF(40)
-      }
-      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: sx + 140, clientY: sy + 100 }))
-      svgRoot.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: sx + 140, clientY: sy + 100 }))
-      await sleepF(600)
-      dragLog.after = node.getData('imageSize')
-      dragLog.grew = !!(dragLog.after && dragLog.after.width > before.width + 2)
+    await sleepF(300)
+    log('thumb-check', { imageSize: node.getData('imageSize'), handleShown: !!q('.node-img-handle'), before })
+    // 激活图片节点 → 工具栏「查看图片大图」→ 弹窗缩放
+    node.active(); await sleepF(250)
+    const viewBtn = qa('.toolbar button').find(b => (b.getAttribute('data-tip') || '').includes('查看图片大图'))
+    viewBtn && viewBtn.click()
+    await sleepF(700)
+    const vr = { opened: !!q('.img-viewer'), pct0: (q('.img-viewer .vpct') || {}).textContent || '' }
+    if (q('.img-viewer')) {
+      const plus = qa('.img-viewer .viewer-bar button').find(b => b.textContent.trim() === '＋')
+      plus && plus.click(); await sleepF(150); plus && plus.click(); await sleepF(250)
+      vr.pct1 = q('.img-viewer .vpct').textContent
+      vr.transform = (q('.img-viewer .viewer-stage img') || {}).style && q('.img-viewer .viewer-stage img').style.transform
+      const cls = q('.img-viewer .viewer-bar button.primary')
+      cls && cls.click(); await sleepF(250)
+      vr.closed = !q('.img-viewer')
     }
-    log('real-drag', dragLog)
+    log('image-viewer', vr)
     // 画布放大按钮
     const scaleBefore = M.view.scale
     const zoomBtn = qa('.toolbar button').find(b => b.getAttribute('data-tip') === '放大')
@@ -376,14 +373,27 @@ window.__cmindUITest = async function (mode) {
     const raw = JSON.parse(await window.cmind.invoke('fs:read', S.workspace + '/徐晓赫/测试二级文件夹/测试脑图.cmind'))
     userFile.savedImageSize = raw.root.children[0].data.imageSize
     userFile.savedText = JSON.stringify(raw.root.children[0].data.text)
-    // 图片放大：设为 300 宽 custom
+    // 看图弹窗：激活图片节点 → 工具栏 🔍 → 放大/缩小
     try {
       const n0 = M.renderer.root.children[0]
-      M.execCommand('SET_NODE_IMAGE', n0, { url: n0.getData('image'), title: '', width: 320, height: 240, custom: true })
-      await sleep(500)
-      const img2 = n0.group.node.querySelector('image')
-      userFile.enlargedTo = img2 ? img2.getAttribute('width') + 'x' + img2.getAttribute('height') : 'no-img'
-    } catch (e) { userFile.enlargeErr = String(e.message || e) }
+      n0.active(); await sleep(300)
+      const vb = [...document.querySelectorAll('.toolbar button')].find(b => (b.getAttribute('data-tip') || '').includes('查看图片大图'))
+      vb && vb.click(); await sleep(700)
+      userFile.viewerOpened = !!document.querySelector('.img-viewer')
+      if (userFile.viewerOpened) {
+        const bars = [...document.querySelectorAll('.img-viewer .viewer-bar button')]
+        userFile.viewerPct0 = document.querySelector('.img-viewer .vpct').textContent
+        bars.find(b => b.textContent.trim() === '＋').click(); await sleep(200)
+        userFile.viewerPct1 = document.querySelector('.img-viewer .vpct').textContent
+        bars.find(b => b.textContent.trim() === '－').click(); await sleep(150)
+        // 滚轮缩放
+        document.querySelector('.img-viewer .viewer-stage').dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true }))
+        await sleep(150)
+        userFile.viewerPct2 = document.querySelector('.img-viewer .vpct').textContent
+        document.querySelector('.img-viewer .viewer-bar button.primary').click(); await sleep(200)
+        userFile.viewerClosed = !document.querySelector('.img-viewer')
+      }
+    } catch (e) { userFile.viewerErr = String(e.message || e) }
     // 回主测试图
     { const back = S.tabs[S.tabs.length - 2]; if (back) await openMap(back.path) }
     await sleep(800)

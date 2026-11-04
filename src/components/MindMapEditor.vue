@@ -12,7 +12,6 @@ import Drag from 'simple-mind-map/src/plugins/Drag.js'
 import Select from 'simple-mind-map/src/plugins/Select.js'
 import Export from 'simple-mind-map/src/plugins/Export.js'
 import ExportXMind from 'simple-mind-map/src/plugins/ExportXMind.js'
-import NodeImgAdjust from 'simple-mind-map/src/plugins/NodeImgAdjust.js'
 import KeyboardNavigation from 'simple-mind-map/src/plugins/KeyboardNavigation.js'
 import {
   store, api, toast, uiContextMenu, MIND_EXT, syncRenameMap, sanitizeFileName
@@ -27,7 +26,6 @@ if (!MindMap.__cmindPlugins) {
   MindMap.usePlugin(Select)
   MindMap.usePlugin(Export)
   MindMap.usePlugin(ExportXMind)
-  MindMap.usePlugin(NodeImgAdjust)
   MindMap.usePlugin(KeyboardNavigation)
   MindMap.__cmindPlugins = true
 }
@@ -37,6 +35,7 @@ const props = defineProps({ tab: { type: Object, required: true } })
 const canvasEl = ref(null)
 const scale = ref(1)
 const hasActive = ref(false)
+const hasImageNode = ref(false)
 const showHelp = ref(false)
 
 const dialog = ref(null) // { mode: 'image'|'link'|'note', ... }
@@ -160,6 +159,7 @@ onMounted(async () => {
   })
   mindMap.on('node_active', (_node, list) => {
     hasActive.value = list.length > 0
+    hasImageNode.value = list.length === 1 && !!list[0].getData('image')
   })
   // 节点右键菜单（与 Xmind 一致：插入/编辑/删除）
   mindMap.on('node_contextmenu', (e, node) => {
@@ -181,9 +181,8 @@ onMounted(async () => {
     if (node.getData('image')) {
       items.push(
         { type: 'sep' },
-        { label: '图片：放大', action: () => resizeNodeImage(node, 1.25) },
-        { label: '图片：缩小', action: () => resizeNodeImage(node, 0.8) },
-        { label: '图片：恢复原始比例', action: () => restoreNodeImage(node) }
+        { label: '查看图片大图（可缩放）', action: () => openImageViewer(node) },
+        { label: '图片：重置为缩略图', action: () => resetNodeImageThumb(node) }
       )
     }
     if (!node.isRoot) {
@@ -315,27 +314,82 @@ async function doExportInterop(kind) {
   }
 }
 
-/* ---------- 节点图片缩放（右键菜单） ---------- */
-function resizeNodeImage(node, factor) {
-  if (!node) return
-  const d = node.getData()
-  if (!d.image) return
-  const sz = d.imageSize || {}
-  const w = Math.max(20, Math.round((sz.width || 200) * factor))
-  const h = Math.max(20, Math.round((sz.height || 100) * factor))
-  mindMap.execCommand('SET_NODE_IMAGE', node, { url: d.image, title: d.imageTitle || '', width: w, height: h, custom: true })
-  scheduleSave()
+/* ---------- 节点图片：画布内只显示缩略图，点击「放大」弹窗查看大图 ---------- */
+const THUMB_MAX_W = 200
+const THUMB_MAX_H = 100
+const IMG_VIEW_SCALE_MIN = 0.1
+const IMG_VIEW_SCALE_MAX = 8
+
+const imageViewer = ref(null) // { url, title, scale, x, y, natW, natH }
+
+function thumbSize(nat, fallbackW, fallbackH) {
+  const w = Math.max(1, nat ? nat.w : fallbackW || THUMB_MAX_W)
+  const h = Math.max(1, nat ? nat.h : fallbackH || THUMB_MAX_H)
+  const r = Math.min(THUMB_MAX_W / w, THUMB_MAX_H / h, 1)
+  return { width: Math.max(1, Math.round(w * r)), height: Math.max(1, Math.round(h * r)) }
 }
-async function restoreNodeImage(node) {
-  if (!node) return
+
+async function openImageViewer(node) {
+  const d = node && typeof node.getData === 'function' ? node.getData() : null
+  if (!d || !d.image) { toast('当前节点没有图片', 'error'); return }
+  const v = { url: d.image, title: d.imageTitle || d.text || '', scale: 1, x: 0, y: 0, natW: 0, natH: 0 }
+  imageViewer.value = v
+  const nat = await probeImageSize(d.image)
+  if (nat && imageViewer.value === v) {
+    v.natW = nat.w
+    v.natH = nat.h
+    viewerFit()
+  }
+}
+function closeImageViewer() { imageViewer.value = null }
+function viewerZoom(delta) {
+  const v = imageViewer.value
+  if (!v) return
+  v.scale = Math.min(IMG_VIEW_SCALE_MAX, Math.max(IMG_VIEW_SCALE_MIN, +(v.scale + delta).toFixed(3)))
+}
+function viewerFit() {
+  const v = imageViewer.value
+  if (!v || !v.natW) return
+  const sw = window.innerWidth * 0.82
+  const sh = window.innerHeight * 0.66
+  v.scale = Math.max(IMG_VIEW_SCALE_MIN, Math.min(2, Math.min(sw / v.natW, sh / v.natH)))
+  v.x = 0
+  v.y = 0
+}
+function onViewerWheel(e) {
+  const v = imageViewer.value
+  if (!v) return
+  e.preventDefault()
+  const k = e.deltaY > 0 ? 0.9 : 1.111
+  v.scale = Math.min(IMG_VIEW_SCALE_MAX, Math.max(IMG_VIEW_SCALE_MIN, +(v.scale * k).toFixed(3)))
+}
+let viewerDrag = null
+function viewerDown(e) {
+  if (!imageViewer.value) return
+  viewerDrag = { sx: e.clientX, sy: e.clientY, ox: imageViewer.value.x, oy: imageViewer.value.y }
+  window.addEventListener('mousemove', viewerMove)
+  window.addEventListener('mouseup', viewerUp)
+}
+function viewerMove(e) {
+  if (!viewerDrag || !imageViewer.value) return
+  imageViewer.value.x = viewerDrag.ox + e.clientX - viewerDrag.sx
+  imageViewer.value.y = viewerDrag.oy + e.clientY - viewerDrag.sy
+}
+function viewerUp() {
+  viewerDrag = null
+  window.removeEventListener('mousemove', viewerMove)
+  window.removeEventListener('mouseup', viewerUp)
+}
+
+/* 把某节点图片恢复为缩略图尺寸（右键菜单用） */
+async function resetNodeImageThumb(node) {
   const d = node.getData()
   if (!d.image) return
-  const size = await probeImageSize(d.image)
-  const r = Math.min(480 / (size ? size.w : 480), 360 / (size ? size.h : 360), 1)
-  const w = Math.max(1, Math.round((size ? size.w : 480) * r))
-  const h = Math.max(1, Math.round((size ? size.h : 360) * r))
-  mindMap.execCommand('SET_NODE_IMAGE', node, { url: d.image, title: d.imageTitle || '', width: w, height: h, custom: false })
+  const nat = await probeImageSize(d.image)
+  const sz = thumbSize(nat, (d.imageSize || {}).width, (d.imageSize || {}).height)
+  mindMap.execCommand('SET_NODE_IMAGE', node, { url: d.image, title: d.imageTitle || '', width: sz.width, height: sz.height, custom: false })
   scheduleSave()
+  toast('图片已重置为缩略图', 'ok')
 }
 
 /* ---------- 空白清理：带图片/链接的节点不应带纯空白文本 ---------- */
@@ -449,13 +503,8 @@ async function applyDialog() {
       const url = d.dataUrl || d.imgUrl.trim()
       if (!url) { toast('请选择本地图片或填写图片地址', 'error'); return }
       const size = await probeImageSize(url)
-      let width = 480, height = 360
-      if (size) {
-        const r = Math.min(480 / size.w, 360 / size.h, 1)
-        width = Math.max(1, Math.round(size.w * r))
-        height = Math.max(1, Math.round(size.h * r))
-      }
-      exec('SET_NODE_IMAGE', node, { url, title: d.fileName || '', width, height, custom: true })
+      const sz = thumbSize(size)
+      exec('SET_NODE_IMAGE', node, { url, title: d.fileName || '', width: sz.width, height: sz.height, custom: false })
     } else if (d.mode === 'link') {
       if (d.linkType === 'web') {
         const url = d.webUrl.trim()
@@ -477,31 +526,34 @@ async function applyDialog() {
   }
 }
 
-/* 修复来自其他工具的文件：节点图片缺 imageSize.width/height（会导致节点渲染成极小窄条、无法点击） */
+/* 图片统一按缩略图展示（≤200×100 等比），缺失尺寸/自定义超大尺寸一并收拢，保证版面美观 */
 async function repairImageSizes(root) {
   let fixed = 0
+  const list = []
   const walk = (n) => {
-    const d = n && n.data
-    if (d && d.image && !(d.imageSize && d.imageSize.width)) {
-      fixed++
-      return (async () => {
-        const size = await probeImageSize(d.image)
-        let w = size ? size.w : 480
-        let h = size ? size.h : 360
-        const r = Math.min(480 / w, 360 / h, 1)
-        // 来自其他工具的文件缺失尺寸：按自然比例补齐，并标记 custom 以免被主题 200px 上限再次压缩
-        d.imageSize = { width: Math.max(1, Math.round(w * r)), height: Math.max(1, Math.round(h * r)), custom: true }
-      })()
-    }
-    return Promise.all((n.children || []).map(walk))
+    if (!n) return
+    if (n.data && n.data.image) list.push(n)
+    ;(n.children || []).forEach(walk)
   }
-  await walk(root)
+  walk(root)
+  for (const n of list) {
+    const d = n.data
+    const sz = d.imageSize || {}
+    const needFix = !sz.width || !sz.height || sz.custom ||
+      sz.width > THUMB_MAX_W + 0.5 || sz.height > THUMB_MAX_H + 0.5
+    if (!needFix) continue
+    let nat = null
+    try { nat = await probeImageSize(d.image) } catch {}
+    const t = thumbSize(nat, sz.width, sz.height)
+    d.imageSize = { width: t.width, height: t.height, custom: false }
+    fixed++
+  }
   return fixed
 }
 
-/* 读取图片原始尺寸，按主题上限（200x100）等比缩放 */
 /* 编辑时 Shift+Enter：节点内换行（sm-m 的 Enter 是保存并新建同级节点） */
 function onEditKeydown(e) {
+  if (e.key === 'Escape' && imageViewer.value) { closeImageViewer(); return }
   if (e.key !== 'Enter' || !e.shiftKey) return
   const isEdit = (x) => x && x.classList && x.classList.contains('smm-node-edit-wrap')
   const el = isEdit(e.target) ? e.target : (isEdit(document.activeElement) ? document.activeElement : null)
@@ -564,6 +616,7 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
       <div class="sep"></div>
       <button class="icon-btn" data-tip="导入（XMind / FreeMind / OPML / Markdown / JSON）" @click="doImport">📥</button>
       <button class="icon-btn" data-tip="插入图片" @click="openImageDialog">🖼</button>
+      <button class="icon-btn" data-tip="查看图片大图（可缩放）" :disabled="!hasImageNode" @click="openImageViewer(mindMap && mindMap.renderer.activeNodeList[0])">🔍</button>
       <button class="icon-btn" data-tip="插入链接（网页/其他脑图）" @click="openLinkDialog">🔗</button>
       <button class="icon-btn" data-tip="插入备注" @click="openNoteDialog">📝</button>
       <div class="sep"></div>
@@ -661,6 +714,24 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
       </div>
     </div>
 
+    <!-- 图片大图查看（可放大/缩小） -->
+    <div v-if="imageViewer" class="overlay img-viewer" @click.self="closeImageViewer">
+      <div class="viewer-bar">
+        <span class="vname" :title="imageViewer.title">{{ imageViewer.title || '图片预览' }}</span>
+        <span class="vspace"></span>
+        <button @click="viewerZoom(-0.25)">－</button>
+        <span class="vpct">{{ Math.round(imageViewer.scale * 100) }}%</span>
+        <button @click="viewerZoom(0.25)">＋</button>
+        <button @click="viewerFit">适合窗口</button>
+        <button @click="imageViewer.scale = 1; imageViewer.x = 0; imageViewer.y = 0">100%</button>
+        <button class="primary" @click="closeImageViewer">关闭</button>
+      </div>
+      <div class="viewer-stage" @wheel.prevent="onViewerWheel" @mousedown.prevent="viewerDown" @dblclick="viewerFit">
+        <img :src="imageViewer.url" draggable="false"
+             :style="{ transform: `translate(${imageViewer.x}px, ${imageViewer.y}px) scale(${imageViewer.scale})` }" />
+      </div>
+    </div>
+
     <!-- 快捷键说明 -->
     <div v-if="showHelp" class="overlay" @click.self="showHelp = false">
       <div class="modal wide">
@@ -683,6 +754,7 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
             <tr><td>触控板 / 滚轮</td><td>缩放画布</td></tr>
             <tr><td><kbd>⌘S</kbd> / <kbd>⌘N</kbd> / <kbd>⌘W</kbd></td><td>保存 / 新建脑图 / 关闭标签</td></tr>
             <tr><td>点击 🔗 图标</td><td>打开节点链接（网页 → 浏览器，脑图 → 新标签页）</td></tr>
+            <tr><td>选中图片节点 + <kbd>🔍</kbd></td><td>弹窗查看图片大图（可放大 / 缩小 / 拖动）</td></tr>
           </table>
         </div>
         <div class="modal-foot">
