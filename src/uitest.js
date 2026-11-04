@@ -83,6 +83,16 @@ window.__cmindUITest = async function (mode) {
       // 端到端：走侧栏「📥 导入」全链路。规则 = 选中脑图→其所在文件夹；选中文件夹→该文件夹
       const S = window.__cmindStore
       if (!window.__cmindImport) { log('insert', { error: 'no hook' }); return out }
+      await new Promise(r => setTimeout(r, 1200))
+      log('tree-probe', {
+        ws: S.workspace.split('/').pop(),
+        treeLen: S.tree.length,
+        names: S.tree.map(n => n.name).slice(0, 6),
+        rows: document.querySelectorAll('.tree-row').length,
+        tabs: S.tabs.length,
+        hookImport: typeof window.__cmindImport,
+        hookMove: typeof window.__cmindMove
+      })
       const pick = async (kw) => {
         const row = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes(kw))
         if (row) row.click()
@@ -153,17 +163,10 @@ window.__cmindUITest = async function (mode) {
         gridOn: !!document.querySelector('.fv-grid-wrap'),
         savedMode: localStorage.getItem('cmind-dir-view')
       })
-      // 拖拽排序：根目录 [学习笔记, 产品路线图, 团队知识库] → 产品路线图 移到 团队知识库 位置
-      const ws = S.workspace
-      const namesBefore = S.tree.map(n => n.name).join('|')
-      await window.__cmindReorder(ws + '/产品路线图.cmind', ws + '/团队知识库.cmind')
-      await new Promise(r => setTimeout(r, 1000))
-      const namesAfter = S.tree.map(n => n.name).join('|')
-      const cfg = await window.cmind.invoke('config:get')
-      log('reorder-check', { namesBefore, namesAfter, persisted: !!(cfg.treeOrder && cfg.treeOrder[ws]) })
       // 链接随移动修复：把 团队知识库.cmind 移入 学习笔记，其他脑图里指向它的 cmind:// 链接应自动更新
       const mapRow2 = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes('产品路线图'))
       if (mapRow2 && window.__cmindMove) {
+        const ws = S.workspace
         // 先记录打开标签的 dirty 状态（dirty 会被跳过重写）
         const dirtyNow = S.tabs.filter(t => t.dirty).map(t => t.name)
         mapRow2.click()
@@ -187,13 +190,40 @@ window.__cmindUITest = async function (mode) {
           dirtyNow,
           toasts: S.toasts.map(t2 => t2.text).slice(-4)
         })
+        // 同名不同文件夹：造 其他/团队知识库.cmind 同名副本，再把 学习笔记 那份移到 X/
+        // → 链接按完整相对路径精确匹配重写，其他文件夹的同名文件不受影响
+        const otherDir = ws + '/其他'
+        const xDir = ws + '/X'
+        let c1 = '', c2 = ''
+        try { await window.cmind.invoke('fs:createDir', ws, '其他') } catch (e) { c1 = String(e.message || e) }
+        try { await window.cmind.invoke('fs:createDir', ws, 'X') } catch (e) { c2 = String(e.message || e) }
+        const tkRaw = String(await window.cmind.invoke('fs:read', ws + '/学习笔记/团队知识库.cmind'))
+        await window.cmind.invoke('fs:write', otherDir + '/团队知识库.cmind', tkRaw)
+        await window.__cmindMove(ws + '/学习笔记/团队知识库.cmind', xDir)
+        await new Promise(r => setTimeout(r, 1600))
+        const prRaw2 = String(await window.cmind.invoke('fs:read', prPath))
+        const links2 = (prRaw2.match(/cmind:\/\/open\?path=([^"'\s<>)]+)/g) || []).map(x => {
+          try { return decodeURIComponent(x.replace('cmind://open?path=', '')) } catch { return x }
+        })
+        const otherRaw = String(await window.cmind.invoke('fs:read', otherDir + '/团队知识库.cmind'))
+        log('same-name-check', {
+          links: links2.slice(0, 6),
+          movedRewritten: links2.includes('X/团队知识库.cmind'),
+          otherIntact: otherRaw === tkRaw
+        })
+        // 重名校验：同文件夹新建/重名 → 明确报错（不再自动 -1/-2）
+        let dupFileMsg = ''
+        try { await window.cmind.invoke('fs:createFile', ws, '产品路线图', '{}') } catch (e) { dupFileMsg = String(e.message || e) }
+        let dupDirMsg = ''
+        try { await window.cmind.invoke('fs:createDir', ws, '学习笔记') } catch (e) { dupDirMsg = String(e.message || e) }
+        log('dup-check', { dupFileMsg, dupDirMsg })
         // dirty 打开场景：给当前脑图制造未保存改动，再反向移动 团队知识库 回根目录
         const MM = window.__cmindMap
         if (MM) {
           MM.execCommand('INSERT_CHILD_NODE', false, [MM.renderer.root], { data: { text: 'dirty-probe' } }, [])
           await new Promise(r => setTimeout(r, 400))
           const dirtyTab = S.tabs.find(t => t.id === S.activeId)
-          await window.__cmindMove(ws + '/学习笔记/团队知识库.cmind', ws)
+          await window.__cmindMove(ws + '/X/团队知识库.cmind', ws)
           await new Promise(r => setTimeout(r, 2000)) // 等自动保存(900ms)+重写
           const doc = MM.getData(true)
           const memLinks = []

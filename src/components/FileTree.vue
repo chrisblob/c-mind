@@ -5,7 +5,7 @@
  */
 import { computed } from 'vue'
 import TreeNode from './TreeNode.vue'
-import { store, chooseWorkspace, createMap, createDir, doImport, reorderSibling, movePath, uiPrompt, dirLabel } from '../store.js'
+import { store, chooseWorkspace, createMap, createDir, doImport, movePath, uiPrompt, dirLabel } from '../store.js'
 
 const wsName = computed(() => store.workspace.split('/').filter(Boolean).pop() || '未设置工作区')
 
@@ -22,7 +22,6 @@ async function onNewFolder() {
   await createDir(targetDir(), name)
 }
 window.__cmindImport = doImport // 自检钩子
-window.__cmindReorder = reorderSibling
 window.__cmindMove = movePath
 </script>
 

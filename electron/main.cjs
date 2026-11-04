@@ -234,12 +234,8 @@ function registerFsIpc() {
     let name = String(rawName || '').trim()
     if (!name) throw new Error('名称不能为空')
     if (!name.endsWith(MIND_EXT)) name += MIND_EXT
-    let abs = path.join(d, name)
-    let i = 1
-    while (fs.existsSync(abs)) {
-      abs = path.join(d, name.replace(new RegExp(MIND_EXT + '$'), '') + '-' + i + MIND_EXT)
-      i++
-    }
+    const abs = path.join(d, name)
+    if (fs.existsSync(abs)) throw new Error('同名文件已存在：' + name)
     await fsp.writeFile(abs, content, 'utf-8')
     return abs
   })
@@ -249,15 +245,8 @@ function registerFsIpc() {
     const name = String(rawName || '').trim()
     if (!name) throw new Error('名称不能为空')
     if (/[\\/:*?"<>|]/.test(name)) throw new Error('文件名不能包含 \\ / : * ? " < > |')
-    let abs = path.join(d, name)
-    let i = 1
-    const dot = name.lastIndexOf('.')
-    while (fs.existsSync(abs)) {
-      const base = dot > 0 ? name.slice(0, dot) : name
-      const ext = dot > 0 ? name.slice(dot) : ''
-      abs = path.join(d, `${base}-${i}${ext}`)
-      i++
-    }
+    const abs = path.join(d, name)
+    if (fs.existsSync(abs)) throw new Error('同名文件已存在：' + name)
     await fsp.writeFile(abs, content, 'utf-8')
     return abs
   })
@@ -265,9 +254,8 @@ function registerFsIpc() {
     const d = safePath(dir)
     const name = String(rawName || '').trim()
     if (!name) throw new Error('名称不能为空')
-    let abs = path.join(d, name)
-    let i = 1
-    while (fs.existsSync(abs)) { abs = path.join(d, `${name}-${i}`); i++ }
+    const abs = path.join(d, name)
+    if (fs.existsSync(abs)) throw new Error('同名文件夹已存在：' + name)
     await fsp.mkdir(abs, { recursive: true })
     return abs
   })

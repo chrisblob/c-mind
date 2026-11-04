@@ -6,7 +6,7 @@
 import { ref, computed } from 'vue'
 import {
   store, api, openMap, openDir, createMap, createDir, openRawFile,
-  renamePath, movePath, deletePath, uiPrompt, uiContextMenu, collectDirs, toast, reorderSibling
+  renamePath, movePath, deletePath, uiPrompt, uiContextMenu, collectDirs, toast
 } from '../store.js'
 
 const props = defineProps({
@@ -38,15 +38,23 @@ function onClick() {
 async function newMapIn(dir) {
   const name = await uiPrompt(`新建脑图（${nameOf(dir)}）`, '名称（将作为根节点与文件名）', '', '例如：产品规划', true)
   if (!name) return
-  const abs = await createMap(dir, name)
-  if (dir !== props.node.path) toast('已创建：' + abs.split('/').pop(), 'ok')
-  if (props.node.type === 'dir') expanded.value = true
+  try {
+    const abs = await createMap(dir, name)
+    if (dir !== props.node.path) toast('已创建：' + abs.split('/').pop(), 'ok')
+    if (props.node.type === 'dir') expanded.value = true
+  } catch (err) {
+    toast('创建失败：' + (err.message || err), 'error')
+  }
 }
 async function newFolderIn(dir) {
   const name = await uiPrompt(`新建文件夹（${nameOf(dir)}）`, '文件夹名称', '', '例如：项目资料', true)
   if (!name) return
-  await createDir(dir, name)
-  if (props.node.type === 'dir') expanded.value = true
+  try {
+    await createDir(dir, name)
+    if (props.node.type === 'dir') expanded.value = true
+  } catch (err) {
+    toast('创建失败：' + (err.message || err), 'error')
+  }
 }
 function nameOf(dir) {
   const ws = store.workspace.replace(/\/+$/, '')
@@ -56,7 +64,11 @@ function nameOf(dir) {
 async function menuRename() {
   const name = await uiPrompt('重命名', '新名称', props.node.name, '', true)
   if (!name) return
-  await renamePath(props.node.path, name)
+  try {
+    await renamePath(props.node.path, name)
+  } catch (err) {
+    toast('重命名失败：' + (err.message || err), 'error')
+  }
 }
 
 async function menuMove() {
@@ -149,7 +161,6 @@ async function onDrop(e) {
       @dragover="onDragOver"
       @dragleave="onDragLeave"
       @drop.prevent="onDrop"
-      @dragend="onDragEnd"
     >
       <span v-if="node.type === 'dir'" class="arrow" :class="{ open: expanded }">▶</span>
       <span v-else style="width:14px;flex:none"></span>

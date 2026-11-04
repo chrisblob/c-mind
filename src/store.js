@@ -79,60 +79,12 @@ export async function chooseWorkspace() {
   return true
 }
 
-/** 在名称排序基础上叠加用户拖拽的自定义顺序（config.treeOrder: { 父目录: [文件名...] }） */
-function applyTreeOrder(nodes, parentPath) {
-  const order = (store.config && store.config.treeOrder) || {}
-  const ord = order[parentPath] || []
-  nodes.sort((a, b) => {
-    const ia = ord.indexOf(a.name)
-    const ib = ord.indexOf(b.name)
-    if (ia !== -1 && ib !== -1) return ia - ib
-    if (ia !== -1) return -1
-    if (ib !== -1) return 1
-    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
-    return a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
-  })
-  nodes.forEach(n => { if (n.children) applyTreeOrder(n.children, n.path) })
-}
-
 export async function refreshTree() {
   try {
     store.tree = await api('fs:tree')
-    applyTreeOrder(store.tree, store.workspace)
   } catch (e) {
     store.tree = []
   }
-}
-
-/** 同文件夹内拖拽排序：把 src 移动到 target 当前位置并持久化 */
-export async function reorderSibling(srcPath, targetPath) {
-  if (srcPath === targetPath) return false
-  const parent = srcPath.slice(0, srcPath.lastIndexOf('/'))
-  const siblings = parent === store.workspace
-    ? store.tree
-    : (function find(list) {
-      for (const n of list) {
-        if (n.path === parent) return n.children || []
-        const r = n.children && find(n.children)
-        if (r) return r
-      }
-      return null
-    })(store.tree)
-  if (!siblings) return false
-  const srcName = srcPath.slice(srcPath.lastIndexOf('/') + 1)
-  const tgtName = targetPath.slice(targetPath.lastIndexOf('/') + 1)
-  const names = siblings.map(n => n.name)
-  if (!names.includes(srcName) || !names.includes(tgtName)) return false
-  const wasIdx = names.indexOf(srcName)
-  names.splice(wasIdx, 1)
-  const tgtIdx = names.indexOf(tgtName)
-  // 让 src 正好占据 tgt 原来的位置：src 在 tgt 之前（含紧邻）→ 插到 tgt 之后；否则插到 tgt 之前
-  names.splice(tgtIdx + (wasIdx <= tgtIdx ? 1 : 0), 0, srcName)
-  const treeOrder = { ...((store.config && store.config.treeOrder) || {}), [parent]: names }
-  store.config.treeOrder = treeOrder
-  await api('config:set', { treeOrder })
-  await refreshTree()
-  return true
 }
 
 /* ---------- 标签页 ---------- */
@@ -281,11 +233,14 @@ export async function syncRenameMap(tab, newBase) {
   const base = sanitizeFileName(newBase)
   if (!base || base === tab.name) return false
   try {
-    const newPath = await api('fs:rename', tab.path, base + MIND_EXT)
+    const oldPath = tab.path
+    const newPath = await api('fs:rename', oldPath, base + MIND_EXT)
     tab.path = newPath
     tab.rel = relOf(newPath)
     tab.name = base
-    await refreshTree()
+    await refreshTree() // 先刷新树，再重写互链（其他脑图指向旧文件名的链接）
+    await rewriteLinksAfterMove(relOf(oldPath), relOf(newPath))
+    syncTabsAfterPathChange(oldPath, newPath)
     return true
   } catch (e) {
     toast('文件名同步失败：' + (e.message || e), 'error')
