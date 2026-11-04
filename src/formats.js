@@ -33,7 +33,8 @@ export function parseImportText(kind, text) {
   throw new Error('不支持的格式：' + kind)
 }
 
-const node = (text, children = []) => ({ data: { text: String(text == null ? '' : text).trim() }, children })
+// 空标题给默认文案，避免导入后出现极小的“不可操作”节点
+const node = (text, children = []) => ({ data: { text: String(text == null ? '' : text).trim() || '子主题' }, children })
 
 /* C-Mind / simple-mind-map / 任意含 root 或 data 的 JSON */
 export function parseJsonAny(text) {

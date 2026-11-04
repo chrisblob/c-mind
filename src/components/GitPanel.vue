@@ -154,13 +154,13 @@ async function newBranch() {
         <div class="status-line" style="flex-wrap:wrap">
           <select
             v-if="status.branches && status.branches.length"
-            :value="status.branch" title="切换分支" style="width:auto"
+            :value="status.branch" data-tip="切换分支" style="width:auto"
             @change="onBranchChange($event.target.value)"
           >
             <option v-for="b in status.branches" :key="b" :value="b">{{ b }}</option>
           </select>
           <span v-else class="badge">{{ status.branch || '无分支' }}</span>
-          <button class="icon-btn" title="从当前分支新建分支" @click="newBranch">＋ 分支</button>
+          <button class="icon-btn" data-tip="从当前分支新建分支" @click="newBranch">＋ 分支</button>
           <span class="badge gray" v-if="status.tracking">↑{{ status.ahead }} ↓{{ status.behind }}</span>
           <span v-if="!status.tracking" class="badge warn">未跟踪远程分支</span>
           <span v-if="status.ownRepo === false" class="badge warn">嵌套于外部仓库</span>

@@ -11,7 +11,7 @@ const ALLOWED = new Set([
   'os:openExternal', 'os:openPath', 'os:openItem',
   'import:open', 'export:save',
   'git:bind', 'git:unbind', 'git:status', 'git:commit', 'git:push', 'git:pull', 'git:log',
-  'git:branches', 'git:checkout', 'git:createBranch'
+  'git:branches', 'git:checkout', 'git:createBranch', 'git:deleteBranch'
 ])
 
 contextBridge.exposeInMainWorld('cmind', {

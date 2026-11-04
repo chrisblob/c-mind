@@ -3,6 +3,9 @@ import App from './App.vue'
 import './styles.css'
 import { store } from './store.js'
 import './uitest.js'
+import { installTooltip } from './tooltip.js'
+
+installTooltip()
 
 // 开发者工具 / 自动化测试入口
 window.__cmindStore = store

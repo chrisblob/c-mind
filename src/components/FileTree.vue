@@ -41,10 +41,10 @@ async function onNewFolder() {
         <path d="M26 27 L36 35" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
         <circle cx="38" cy="36" r="3" fill="#fff"/>
       </svg>
-      <span class="ws-name" :title="store.workspace">{{ wsName }}</span>
-      <button class="icon-btn" title="更换工作区" @click="chooseWorkspace()">📂</button>
+      <span class="ws-name" :data-tip="store.workspace">{{ wsName }}</span>
+      <button class="icon-btn" data-tip="更换工作区" @click="chooseWorkspace()">📂</button>
       <button
-        class="icon-btn" title="Git 仓库管理"
+        class="icon-btn" data-tip="Git 仓库管理"
         :class="{ 'btn-toggled': store.gitOpen }"
         @click="store.gitOpen = !store.gitOpen"
       >Git</button>

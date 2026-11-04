@@ -58,21 +58,23 @@ async function readTree(dir, rel = '') {
     if (e.name.startsWith('.') || IGNORED.has(e.name)) continue
     const abs = path.join(dir, e.name)
     const r = rel ? rel + '/' + e.name : e.name
+    let born = 0
+    try { born = (await fsp.stat(abs)).birthtimeMs || 0 } catch {}
     if (e.isDirectory()) {
       out.push({
-        name: e.name, path: abs, rel: r, type: 'dir',
+        name: e.name, path: abs, rel: r, type: 'dir', born,
         children: await readTree(abs, r)
       })
     } else if (e.isFile()) {
       out.push({
-        name: e.name, path: abs, rel: r, type: 'file',
+        name: e.name, path: abs, rel: r, type: 'file', born,
         isMap: e.name.endsWith(MIND_EXT)
       })
     }
   }
+  // 新建的（脑图/文件夹）排最上面：按创建时间倒序，同一时间按名称自然排序
   out.sort((a, b) => {
-    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
-    // 自然排序：v2 排在 v10 前面
+    if (b.born !== a.born) return b.born - a.born
     return a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
   })
   return out
@@ -374,7 +376,19 @@ function registerGitIpc() {
             await git.pull(['origin', 'main', '--allow-unrelated-histories', '--no-rebase'])
             pulled = true
           }
-        } catch (e2) { baseMsg = String(e2.message || e2).split('\n')[0] }
+        } catch (e2) {
+          // 合并冲突：立即终止合并，保留本地文件版本，绝不把冲突标记写进 .cmind 等文件
+          try { await git.raw(['merge', '--abort']) } catch {}
+          try {
+            const s2 = await git.status()
+            if ((s2.conflicted || []).length) {
+              await git.checkout(['--ours', '.'])
+              await git.add('-A')
+              await git.commit('保留本地版本（远端存在同名差异，绑定已中止合并）')
+            }
+          } catch {}
+          baseMsg = '远端与本地存在同名文件差异，已保留本地文件（未覆盖）。可稍后在 Git 面板手动处理'
+        }
       }
     }
     return { ok: true, authOk, authMsg, baseMsg }
@@ -412,6 +426,11 @@ function registerGitIpc() {
     const git = getGit()
     const local = await git.branchLocal()
     return { current: local.current, all: local.all }
+  })
+  ipcMain.handle('git:deleteBranch', async (_e, branch) => {
+    if (!branch || branch === 'main') throw new Error('该分支不允许删除')
+    await getGit().branch(['-D', branch])
+    return { ok: true }
   })
   ipcMain.handle('git:checkout', async (_e, branch) => {
     if (!branch) throw new Error('分支名不能为空')
@@ -521,7 +540,7 @@ function createWindow() {
     mainWindow.webContents.once('did-finish-load', async () => {
       await new Promise(r => setTimeout(r, 1800))
       try {
-        const result = await mainWindow.webContents.executeJavaScript('window.__cmindUITest()')
+        const result = await mainWindow.webContents.executeJavaScript('window.__cmindUITest(' + (process.env.CMIND_UITEST_SKIPGIT === '1' ? '"skipgit"' : '') + ')')
         console.log('[uitest] RESULT ' + JSON.stringify(result, null, 2))
       } catch (e) {
         console.error('[uitest] failed:', e)

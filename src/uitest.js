@@ -3,10 +3,12 @@
  * 覆盖：当前目录新建、图片插入渲染、脑图链接树形选择、多格式导入/导出转换、git 绑定/分支/提交
  */
 import { parseImportText, buildFreeMind, buildOpml, buildMarkdown, extToKind } from './formats.js'
-window.__cmindUITest = async function () {
+import { openMap, closeContextMenu } from './store.js'
+window.__cmindUITest = async function (mode) {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
   const S = window.__cmindStore
   const out = { steps: [] }
+  const skipGit = mode === 'skipgit'
 
   const q = (sel) => document.querySelector(sel)
   const qa = (sel) => [...document.querySelectorAll(sel)]
@@ -16,6 +18,16 @@ window.__cmindUITest = async function () {
     el.dispatchEvent(new Event('input', { bubbles: true }))
   }
   const log = (name, data) => out.steps.push({ name, ...data })
+  const probeFile = async (tag) => {
+    const p = S.workspace + '/徐晓赫/测试二级文件夹/测试脑图.cmind'
+    try {
+      const raw = String(await window.cmind.invoke('fs:read', p))
+      let ok = true
+      try { JSON.parse(raw) } catch (e) { ok = 'PARSE-FAIL:' + e.message.slice(0, 40) }
+      out.steps.push({ name: 'probe-' + tag, len: raw.length, parseOk: ok, tabs: S.tabs.map(t => t.name) })
+    } catch (e) { out.steps.push({ name: 'probe-' + tag, err: String(e.message || e) }) }
+  }
+  await probeFile('start')
   const sideBtn = (kw) => [...document.querySelectorAll('.filetree button')].find(b => b.textContent.includes(kw))
   const clickBtnInModal = (label) => {
     const b = qa('.modal-foot button').find(x => x.textContent.trim() === label)
@@ -31,16 +43,17 @@ window.__cmindUITest = async function () {
 
   // ---------- 0. 先绑定远程仓库（真实用户流程：绑定 → 产内容 → 提交推送） ----------
   let gitBind = {}
-  try {
+  if (!skipGit) try {
     gitBind = await window.cmind.invoke('git:bind', {
       url: 'git@github.com:chrisblob/mind-file.git', user: 'chrisblob', token: ''
     })
     const st = await window.cmind.invoke('git:status')
     gitBind.statusAfterBind = { branch: st.branch, branches: st.branches, tracking: st.tracking }
   } catch (e) { gitBind = { error: String(e.message || e) } }
-  log('git-bind', gitBind)
+  log('git-bind', skipGit ? 'skipped' : gitBind)
 
   // ---------- 1. 点击文件夹 → 当前目录切换 → 侧栏新建脑图落在该文件夹 ----------
+  for (let i = 0; i < 30 && !qa('.tree-row').length; i++) await sleep(200)
   const dirRow = qa('.tree-row').find(r => r.textContent.includes('学习笔记'))
   if (dirRow) { dirRow.click(); await sleep(300) }
   log('current-dir-after-folder-click', { currentDir: S.currentDir })
@@ -52,13 +65,14 @@ window.__cmindUITest = async function () {
   log('create-in-current-dir', {
     currentDir: S.currentDir,
     folderChildren: folder ? folder.children.map(c => c.name) : [],
+    firstChild: folder && folder.children[0] ? folder.children[0].name : null,
     tabs: S.tabs.map(t => t.name)
   })
 
   // ---------- 1b. 再建一张脑图（供链接选择用） ----------
   sideBtn('脑图') && sideBtn('脑图').click()
   await sleep(300)
-  await submitModal('第二张脑图')
+  await submitModal('第二张脑图' + Date.now() % 1000)
 
   // ---------- 2. 插入图片：节点应出现带尺寸的 image 元素 ----------
   const tb = qa('.toolbar button')
@@ -68,7 +82,7 @@ window.__cmindUITest = async function () {
     hasActive: window.__cmindMap ? window.__cmindMap.renderer.activeNodeList.length : -1,
     titles: tb.map(b => b.title)
   })
-  const imgBtn = tb.find(b => b.title === '插入图片')
+  const imgBtn = document.querySelector('[data-tip="插入图片"]')
   const PNG_RED = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
   let imgResult = { skipped: true }
   if (imgBtn && window.__cmindMap) {
@@ -150,8 +164,221 @@ window.__cmindUITest = async function () {
   } catch (e) { importFlow = { error: String(e.message || e) } }
   log('import-insert-flow', importFlow)
 
+  // ---------- 2d. 每个二级节点的交互走查（激活/编辑/插入/右键） ----------
+  let interact = {}
+  try {
+    const M = window.__cmindMap
+    // 造 3 个二级节点（含一个空文本节点模拟导入场景）
+    M.renderer.root.active()
+    await sleep(120)
+    M.execCommand('INSERT_CHILD_NODE', false, [M.renderer.root], { text: '子A' }, [])
+    M.execCommand('INSERT_CHILD_NODE', false, [M.renderer.root], { text: '' }, [])
+    M.execCommand('INSERT_CHILD_NODE', false, [M.renderer.root], { text: '子C' }, [])
+    await sleep(600)
+    const kids = M.renderer.root.children || []
+    interact.childCount = kids.length
+    interact.perNode = kids.map((nd, i) => {
+      const r = { idx: i, text: nd.getData('text') }
+      try {
+        nd.active()
+        r.activate = M.renderer.activeNodeList.includes(nd)
+        r.deactivate = (nd.deactivate(), !M.renderer.activeNodeList.includes(nd))
+        M.execCommand('SET_NODE_TEXT', nd, '改名' + i)
+        r.setText = nd.getData('text') === '改名' + i
+        M.execCommand('INSERT_CHILD_NODE', false, [nd], { text: '孙' + i }, [])
+        r.insertChild = (nd.children || []).some(c => c.getData('text') === '孙' + i)
+        M.execCommand('REMOVE_NODE', nd.children.filter(c => c.getData('text') === '孙' + i))
+        r.removeExtra = !(nd.children || []).some(c => c.getData('text') === '孙' + i)
+        // 右键事件派发到节点元素
+        nd.active()
+        const el = nd.group && nd.group.node
+        if (el) {
+          el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 600, clientY: 400 }))
+          return r  // 右键结果统一在下面统计
+        }
+        r.el = !!el
+      } catch (e) { r.error = String(e.message || e) }
+      return r
+    })
+    await sleep(300)
+    interact.ctxMenuShown = !!document.querySelector('.context-menu')
+    interact.ctxItems = [...document.querySelectorAll('.context-menu .mi')].map(e => e.textContent.trim())
+    closeContextMenu()
+    await sleep(100)
+    // 空文本节点是否能命中点击区域
+    const emptyNode = kids.find(nd => !nd.getData('text'))
+    if (emptyNode) {
+      const el = emptyNode.group && emptyNode.group.node
+      if (el) {
+        const rect = el.getBoundingClientRect()
+        interact.emptyTextNode = { hitW: Math.round(rect.width), hitH: Math.round(rect.height) }
+      }
+    }
+    // 收尾：恢复文本
+    kids.forEach((nd, i) => M.execCommand('SET_NODE_TEXT', nd, '节点' + (i + 1)))
+  } catch (e) { interact.error = String(e.message || e) }
+  log('node-interaction', interact)
+  await probeFile('after-2d')
+
+  // ---------- 2e. 用户真实文件回归：图片节点尺寸修复 + 点击 + 右键菜单 ----------
+  let userFile = { skipped: true }
+  let preRead = 'not run'
+  const toastAtLoad = []
+  const mountTrace = []
+  try {
+    const ufPath = S.workspace + '/徐晓赫/测试二级文件夹/测试脑图.cmind'
+    preRead = 'ok'
+    try {
+      const raw = String(await window.cmind.invoke('fs:read', ufPath))
+      const doc = JSON.parse(raw)
+      preRead = { rawLen: raw.length, rootText: doc.root.data.text, kids: doc.root.children.length }
+    } catch (e) { preRead = 'READ FAIL: ' + (e.message || e) }
+    await openMap(ufPath)
+    for (let i = 0; i < 10; i++) {
+      await sleep(1000)
+      const m = window.__cmindMap
+      toastAtLoad.push(...S.toasts.map(t => t.text))
+      mountTrace.push({
+        t: (i + 1) + 's',
+        rootText: m ? ((m.getData().data || {}).text || '').slice(0, 10) : 'none',
+        kids: m ? ((m.renderer.root || {}).children || []).length : -1,
+        svg: !!document.querySelector('.canvas-holder svg'),
+        tabs: S.tabs.length
+      })
+    }
+    // 等编辑器完成加载与图片尺寸修复（1MB 图片解码较慢）
+    let waited = 0
+    const ready = () => {
+      const m = window.__cmindMap
+      if (!m || ((m.getData().data || {}).text !== '测试脑图')) return false
+      const kids = (m.renderer.root && m.renderer.root.children) || []
+      return kids.length >= 6 && kids.every(k => k.group)
+    }
+    while (!ready() && waited < 20000) { await sleep(300); waited += 300 }
+    await sleep(800)
+    const M = window.__cmindMap
+    const first = M.renderer.root.children[0]
+    const el = first.group && first.group.node
+    const rect = el ? el.getBoundingClientRect() : null
+    const img = el ? el.querySelector('image') : null
+    userFile = {
+      text: JSON.stringify(first.getData('text')),
+      rect: rect ? { w: Math.round(rect.width), h: Math.round(rect.height) } : null,
+      imageRendered: !!img,
+      imageSize: img ? (img.getAttribute('width') + 'x' + img.getAttribute('height')) : null,
+      childCount: M.renderer.root.children.length
+    }
+    // 模拟真实点击（mousedown/mouseup/click）
+    if (el) {
+      const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2
+      for (const type of ['mousedown', 'mouseup', 'click']) {
+        el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: cx, clientY: cy }))
+      }
+      await sleep(300)
+      userFile.clickActivates = M.renderer.activeNodeList.includes(first)
+    }
+    // 模拟右键
+    if (el) {
+      window.__dbg = []
+      M.on('node_contextmenu', (e, n) => window.__dbg.push('emit:' + (n && n.getData('text'))))
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 700, clientY: 400 }))
+      const trace = []
+      for (let i = 0; i < 20; i++) {
+        await sleep(50)
+        trace.push((window.__cmindStore.contextMenu ? 'S' : '-') + (document.querySelector('.context-menu') ? 'D' : '-'))
+      }
+      userFile.trace = trace.join('')
+      userFile.storeCtx = !!window.__cmindStore.contextMenu
+      userFile.ctxMenuShown = !!document.querySelector('.context-menu')
+      userFile.ctxItems = [...document.querySelectorAll('.context-menu .mi')].map(x => x.textContent.trim())
+      closeContextMenu()
+      await sleep(100)
+    }
+    // 图片尺寸是否已写回文件
+    const raw = JSON.parse(await window.cmind.invoke('fs:read', S.workspace + '/徐晓赫/测试二级文件夹/测试脑图.cmind'))
+    userFile.savedImageSize = raw.root.children[0].data.imageSize
+    userFile.savedText = JSON.stringify(raw.root.children[0].data.text)
+    // 图片放大：设为 300 宽 custom
+    try {
+      const n0 = M.renderer.root.children[0]
+      M.execCommand('SET_NODE_IMAGE', n0, { url: n0.getData('image'), title: '', width: 320, height: 240, custom: true })
+      await sleep(500)
+      const img2 = n0.group.node.querySelector('image')
+      userFile.enlargedTo = img2 ? img2.getAttribute('width') + 'x' + img2.getAttribute('height') : 'no-img'
+    } catch (e) { userFile.enlargeErr = String(e.message || e) }
+    // 回主测试图
+    { const back = S.tabs[S.tabs.length - 2]; if (back) await openMap(back.path) }
+    await sleep(800)
+  } catch (e) {
+    const m = window.__cmindMap
+    userFile = {
+      error: String(e.message || e),
+      stack: String(e.stack || '').split('\n')[1] || '',
+      state: {
+        rootText: m ? (m.getData().data || {}).text : 'no map',
+        tabs: S.tabs.map(t => t.name + (t.id === S.activeTabId ? '*' : '') + ' @ ' + (t.path || '-')),
+        kids: m ? ((m.renderer.root || {}).children || []).length : -1,
+        toasts: S.toasts.map(t => t.text),
+      preRead,
+      toastAtLoad
+      }
+    }
+  }
+  userFile.toastAtLoad = toastAtLoad
+  userFile.mountTrace = mountTrace
+  log('user-file-check', userFile)
+
+  // ---------- 2f. 悬停提示（tooltip + 快捷键） ----------
+  let tipCheck = {}
+  try {
+    const btn = document.querySelector('[data-tip][data-key]')
+    if (btn) {
+      btn.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+      await sleep(600)
+      const tip = document.querySelector('.cmind-tooltip')
+      tipCheck = {
+        shown: !!(tip && tip.style.display !== 'none'),
+        text: tip ? tip.textContent : null
+      }
+    } else tipCheck = { found: false }
+  } catch (e) { tipCheck = { error: String(e.message || e) } }
+  log('tooltip-check', tipCheck)
+
+  // ---------- 2g. 节点内换行（编辑时 Shift+Enter） ----------
+  let lineBreak = {}
+  try {
+    const M = window.__cmindMap
+    M.renderer.root.active()
+    await sleep(150)
+    M.execCommand('INSERT_CHILD_NODE', false, [M.renderer.root], { text: '换行测试' }, [])
+    await sleep(500)
+    const nd = M.renderer.root.children.find(c => c.getData('text') === '换行测试')
+    M.renderer.textEdit.show({ node: nd })
+    await sleep(400)
+    const el = document.querySelector('.smm-node-edit-wrap')
+    lineBreak.isEditBox = !!el
+    if (el) {
+      el.focus()
+      el.innerHTML = '第一行'
+      // 设置光标到末尾
+      const rng = document.createRange(); rng.selectNodeContents(el); rng.collapse(false)
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng)
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }))
+      await sleep(150)
+      lineBreak.htmlHasBr = el.innerHTML.includes('<br')
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }))
+      await sleep(100)
+    }
+    M.renderer.textEdit.hideEditTextBox()
+    await sleep(400)
+    const t = nd.getData('text')
+    lineBreak.nodeText = JSON.stringify(t)
+    lineBreak.hasNewline = String(t).includes('\n')
+  } catch (e) { lineBreak.error = String(e.message || e) }
+  log('line-break', lineBreak)
+
   // ---------- 3. 脑图链接弹框：按目录层级展示 ----------
-  const linkBtn = qa('.toolbar button').find(b => b.title && b.title.includes('插入链接'))
+  const linkBtn = document.querySelector('[data-tip="插入链接（网页/其他脑图）"]')
   let linkResult = { skipped: true }
   if (linkBtn) {
     const M2 = window.__cmindMap
@@ -182,7 +409,8 @@ window.__cmindUITest = async function () {
 
   // ---------- 4. Git：提交 → 分支 → 切回 → 推送 ----------
   let gitResult = {}
-  try {
+  if (skipGit) gitResult = { skipped: true }
+  else try {
     const st1 = await window.cmind.invoke('git:status')
     gitResult.statusBeforeCommit = { branch: st1.branch, branches: st1.branches, tracking: st1.tracking }
     await window.cmind.invoke('git:commit', 'uitest: 提交脑图文件')

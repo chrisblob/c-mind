@@ -117,16 +117,23 @@ async function saveNow() {
 
 /* ---------- 初始化 ---------- */
 onMounted(async () => {
+  window.addEventListener('keydown', onEditKeydown, true)
   loading = true
   let doc
   try {
     const content = await api('fs:read', props.tab.path)
     doc = JSON.parse(content)
-  } catch {
+  } catch (e) {
+    console.error('[cmind] 文件读取/解析失败:', props.tab.path, e && e.message)
     toast('文件读取失败，已创建空白导图', 'error')
     doc = { layout: 'logicalStructure', theme: { template: 'default', config: {} }, root: { data: { text: '中心主题' }, children: [] } }
   }
   layoutName.value = doc.layout || 'logicalStructure'
+  // 兼容其他工具产出的文件：补齐图片尺寸
+  let repairedImages = 0
+  try { repairedImages = await repairImageSizes(doc.root) } catch {}
+  let cleanedMediaTexts = 0
+  try { cleanedMediaTexts = cleanDocMediaTexts(doc.root) } catch {}
 
   mindMap = new MindMap({
     el: canvasEl.value,
@@ -142,6 +149,9 @@ onMounted(async () => {
   })
   if (doc.view) { try { mindMap.view.setTransformData(doc.view) } catch {} }
   rootTextAtLoad = (mindMap.getData().data || {}).text || ''
+  if (repairedImages > 0 || cleanedMediaTexts > 0) {
+    saveNow() // 把修复后的图片尺寸/文本写回文件
+  }
   window.__cmindMap = mindMap // 调试/开发者工具用
 
   mindMap.on('data_change', () => {
@@ -150,6 +160,36 @@ onMounted(async () => {
   })
   mindMap.on('node_active', (_node, list) => {
     hasActive.value = list.length > 0
+  })
+  // 节点右键菜单（与 Xmind 一致：插入/编辑/删除）
+  mindMap.on('node_contextmenu', (e, node) => {
+    if (!node) return
+    e.preventDefault && e.preventDefault()
+    e.stopPropagation && e.stopPropagation() // 阻止冒泡到 App 根元素（否则菜单刚打开就被全局关闭）
+    const items = []
+    if (!node.isRoot) {
+      items.push(
+        { label: '插入同级节点 (Enter)', action: () => mindMap.execCommand('INSERT_NODE', false, [node]) },
+        { label: '插入上级节点 (⇧Tab)', action: () => mindMap.execCommand('INSERT_PARENT_NODE', false, [node]) }
+      )
+    }
+    items.push(
+      { label: (node.isRoot ? '插入一级节点' : '插入子节点') + ' (Tab)', action: () => mindMap.execCommand('INSERT_CHILD_NODE', true, [node]) },
+      { label: '编辑节点（双击同效）', action: () => { node.active(); mindMap.renderer.textEdit.show({ node }) } },
+      { label: '复制节点文本', action: () => { navigator.clipboard.writeText(node.getData('text') || ''); toast('已复制节点文本', 'ok') } }
+    )
+    if (node.getData('image')) {
+      items.push(
+        { type: 'sep' },
+        { label: '图片：放大', action: () => resizeNodeImage(node, 1.25) },
+        { label: '图片：缩小', action: () => resizeNodeImage(node, 0.8) },
+        { label: '图片：恢复原始比例', action: () => restoreNodeImage(node) }
+      )
+    }
+    if (!node.isRoot) {
+      items.push({ label: '删除节点 (⌫)', danger: true, action: () => mindMap.execCommand('REMOVE_NODE', [node]) })
+    }
+    uiContextMenu(e.clientX || 0, e.clientY || 0, items)
   })
   mindMap.on('scale', (s) => { scale.value = s })
   mindMap.on('node_tree_render_end', () => { loading = false })
@@ -166,6 +206,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onEditKeydown, true)
   clearTimeout(saveTimer)
   try { if (props.tab.dirty) saveNow() } catch {}
   store.requestSave = null
@@ -274,6 +315,55 @@ async function doExportInterop(kind) {
   }
 }
 
+/* ---------- 节点图片缩放（右键菜单） ---------- */
+function resizeNodeImage(node, factor) {
+  if (!node) return
+  const d = node.getData()
+  if (!d.image) return
+  const sz = d.imageSize || {}
+  const w = Math.max(20, Math.round((sz.width || 200) * factor))
+  const h = Math.max(20, Math.round((sz.height || 100) * factor))
+  mindMap.execCommand('SET_NODE_IMAGE', node, { url: d.image, title: d.imageTitle || '', width: w, height: h, custom: true })
+  scheduleSave()
+}
+async function restoreNodeImage(node) {
+  if (!node) return
+  const d = node.getData()
+  if (!d.image) return
+  const size = await probeImageSize(d.image)
+  const r = Math.min(480 / (size ? size.w : 480), 360 / (size ? size.h : 360), 1)
+  const w = Math.max(1, Math.round((size ? size.w : 480) * r))
+  const h = Math.max(1, Math.round((size ? size.h : 360) * r))
+  mindMap.execCommand('SET_NODE_IMAGE', node, { url: d.image, title: d.imageTitle || '', width: w, height: h, custom: false })
+  scheduleSave()
+}
+
+/* ---------- 空白清理：带图片/链接的节点不应带纯空白文本 ---------- */
+function cleanMediaNodeText(node) {
+  if (!node) return false
+  const d = node.getData()
+  if (!d.image && !d.hyperlink) return false
+  const t = String(d.text == null ? '' : d.text)
+  const cleaned = t.trim()
+  if (cleaned === t) return false
+  mindMap.execCommand('SET_NODE_TEXT', node, cleaned)
+  return true
+}
+function cleanDocMediaTexts(root) {
+  let fixed = 0
+  const walk = (n) => {
+    if (!n) return
+    const d = n.data || {}
+    if ((d.image || d.hyperlink) && d.text != null && String(d.text).trim() !== String(d.text)) {
+      d.text = String(d.text).trim()
+      fixed++
+    }
+    ;(n.children || []).forEach(walk)
+  }
+  walk(root)
+  return fixed
+}
+
 /* ---------- 导入：XMind / FreeMind / OPML / Markdown / JSON ---------- */
 async function doImport() {
   try {
@@ -359,13 +449,13 @@ async function applyDialog() {
       const url = d.dataUrl || d.imgUrl.trim()
       if (!url) { toast('请选择本地图片或填写图片地址', 'error'); return }
       const size = await probeImageSize(url)
-      let width = 200, height = 100
+      let width = 480, height = 360
       if (size) {
-        const r = Math.min(200 / size.w, 100 / size.h, 1)
+        const r = Math.min(480 / size.w, 360 / size.h, 1)
         width = Math.max(1, Math.round(size.w * r))
         height = Math.max(1, Math.round(size.h * r))
       }
-      exec('SET_NODE_IMAGE', node, { url, title: d.fileName || '', width, height })
+      exec('SET_NODE_IMAGE', node, { url, title: d.fileName || '', width, height, custom: true })
     } else if (d.mode === 'link') {
       if (d.linkType === 'web') {
         const url = d.webUrl.trim()
@@ -379,6 +469,7 @@ async function applyDialog() {
     } else if (d.mode === 'note') {
       exec('SET_NODE_NOTE', node, d.note.trim())
     }
+    if (d.mode === 'image' || d.mode === 'link') cleanMediaNodeText(node)
     dialog.value = null
     scheduleSave()
   } catch (err) {
@@ -386,7 +477,57 @@ async function applyDialog() {
   }
 }
 
+/* 修复来自其他工具的文件：节点图片缺 imageSize.width/height（会导致节点渲染成极小窄条、无法点击） */
+async function repairImageSizes(root) {
+  let fixed = 0
+  const walk = (n) => {
+    const d = n && n.data
+    if (d && d.image && !(d.imageSize && d.imageSize.width)) {
+      fixed++
+      return (async () => {
+        const size = await probeImageSize(d.image)
+        let w = size ? size.w : 480
+        let h = size ? size.h : 360
+        const r = Math.min(480 / w, 360 / h, 1)
+        // 来自其他工具的文件缺失尺寸：按自然比例补齐，并标记 custom 以免被主题 200px 上限再次压缩
+        d.imageSize = { width: Math.max(1, Math.round(w * r)), height: Math.max(1, Math.round(h * r)), custom: true }
+      })()
+    }
+    return Promise.all((n.children || []).map(walk))
+  }
+  await walk(root)
+  return fixed
+}
+
 /* 读取图片原始尺寸，按主题上限（200x100）等比缩放 */
+/* 编辑时 Shift+Enter：节点内换行（sm-m 的 Enter 是保存并新建同级节点） */
+function onEditKeydown(e) {
+  if (e.key !== 'Enter' || !e.shiftKey) return
+  const isEdit = (x) => x && x.classList && x.classList.contains('smm-node-edit-wrap')
+  const el = isEdit(e.target) ? e.target : (isEdit(document.activeElement) ? document.activeElement : null)
+  if (!el) return
+  e.preventDefault()
+  e.stopPropagation()
+  const before = el.innerHTML
+  try { document.execCommand('insertLineBreak') } catch {}
+  if (el.innerHTML === before) {
+    // 兜底：手动在光标处插入 <br>
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount && el.contains(sel.getRangeAt(0).startContainer)) {
+      const r = sel.getRangeAt(0)
+      r.deleteContents()
+      const br = document.createElement('br')
+      r.insertNode(br)
+      r.setStartAfter(br)
+      r.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(r)
+    } else {
+      el.appendChild(document.createElement('br'))
+    }
+  }
+}
+
 function probeImageSize(url) {
   return new Promise(resolve => {
     const img = new Image()
@@ -413,38 +554,38 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
   <div class="editor-root">
     <!-- 工具栏 -->
     <div class="toolbar">
-      <button class="icon-btn" title="撤销 (⌘Z)" @click="undo">↩︎</button>
-      <button class="icon-btn" title="重做 (⌘Y)" @click="redo">↪︎</button>
+      <button class="icon-btn" data-tip="撤销" data-key="⌘Z" @click="undo">↩︎</button>
+      <button class="icon-btn" data-tip="重做" data-key="⌘Y" @click="redo">↪︎</button>
       <div class="sep"></div>
-      <button class="icon-btn" title="添加子节点 (Tab)" @click="addChild">＋子节点</button>
-      <button class="icon-btn" title="添加同级节点 (Enter)" @click="addSibling">＋同级</button>
-      <button class="icon-btn" title="添加上级节点 (⇧Tab)" @click="addParent">＋上级</button>
-      <button class="icon-btn" title="删除节点 (⌫)" @click="removeNode">🗑</button>
+      <button class="icon-btn" data-tip="添加子节点" data-key="Tab" @click="addChild">＋子节点</button>
+      <button class="icon-btn" data-tip="添加同级节点" data-key="Enter" @click="addSibling">＋同级</button>
+      <button class="icon-btn" data-tip="添加上级节点" data-key="⇧Tab" @click="addParent">＋上级</button>
+      <button class="icon-btn" data-tip="删除节点" data-key="⌫" @click="removeNode">🗑</button>
       <div class="sep"></div>
-      <button class="icon-btn" title="导入（XMind / FreeMind / OPML / Markdown / JSON）" @click="doImport">📥</button>
-      <button class="icon-btn" title="插入图片" @click="openImageDialog">🖼</button>
-      <button class="icon-btn" title="插入链接（网页/其他脑图）" @click="openLinkDialog">🔗</button>
-      <button class="icon-btn" title="插入备注" @click="openNoteDialog">📝</button>
+      <button class="icon-btn" data-tip="导入（XMind / FreeMind / OPML / Markdown / JSON）" @click="doImport">📥</button>
+      <button class="icon-btn" data-tip="插入图片" @click="openImageDialog">🖼</button>
+      <button class="icon-btn" data-tip="插入链接（网页/其他脑图）" @click="openLinkDialog">🔗</button>
+      <button class="icon-btn" data-tip="插入备注" @click="openNoteDialog">📝</button>
       <div class="sep"></div>
-      <select v-model="layoutName" title="切换布局" @change="onLayoutChange">
+      <select v-model="layoutName" data-tip="切换布局" @change="onLayoutChange">
         <option v-for="[v, label] in LAYOUTS" :key="v" :value="v">{{ label }}</option>
       </select>
-      <select v-model="themeName" title="主题配色" @change="onThemeChange">
+      <select v-model="themeName" data-tip="主题配色" @change="onThemeChange">
         <option v-for="name in Object.keys(THEME_PRESETS)" :key="name" :value="name">{{ name }}</option>
         <option disabled>自定义</option>
       </select>
       <div class="sep"></div>
-      <button class="icon-btn" title="缩小" @click="zoomOut">－</button>
+      <button class="icon-btn" data-tip="缩小" @click="zoomOut">－</button>
       <span class="zoom-label">{{ scalePercent }}</span>
-      <button class="icon-btn" title="放大" @click="zoomIn">＋</button>
-      <button class="icon-btn" title="适配画布" @click="zoomFit">⤢</button>
-      <button class="icon-btn" title="回到中心" @click="zoomReset">◎</button>
+      <button class="icon-btn" data-tip="放大" @click="zoomIn">＋</button>
+      <button class="icon-btn" data-tip="适配画布" @click="zoomFit">⤢</button>
+      <button class="icon-btn" data-tip="回到中心" @click="zoomReset">◎</button>
       <div class="spacer"></div>
-      <button :class="['icon-btn', { 'btn-toggled': tab.readonly }]" title="查看/编辑模式切换" @click="toggleReadonly">
+      <button :class="['icon-btn', { 'btn-toggled': tab.readonly }]" data-tip="查看/编辑模式切换" @click="toggleReadonly">
         {{ tab.readonly ? '👁 查看' : '✏️ 编辑' }}
       </button>
-      <button class="icon-btn" title="导出" @click="exportMenu">导出 ▾</button>
-      <button class="icon-btn" title="快捷键说明" @click="showHelp = true">⌘?</button>
+      <button class="icon-btn" data-tip="导出" @click="exportMenu">导出 ▾</button>
+      <button class="icon-btn" data-tip="快捷键说明" @click="showHelp = true">⌘?</button>
     </div>
 
     <!-- 画布 -->
@@ -532,6 +673,7 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
             <tr><td><kbd>⇧Tab</kbd></td><td>添加上级（父）节点</td></tr>
             <tr><td><kbd>⌫</kbd> / <kbd>Del</kbd></td><td>删除节点</td></tr>
             <tr><td>直接输入文字</td><td>进入文本编辑</td></tr>
+            <tr><td><kbd>⇧Enter</kbd></td><td>节点内换行（编辑时，Enter 为保存并新建同级）</td></tr>
             <tr><td><kbd>⌘Z</kbd> / <kbd>⌘Y</kbd></td><td>撤销 / 重做</td></tr>
             <tr><td><kbd>⌘C</kbd> / <kbd>⌘X</kbd> / <kbd>⌘V</kbd></td><td>复制 / 剪切 / 粘贴节点</td></tr>
             <tr><td><kbd>⌘↑</kbd> / <kbd>⌘↓</kbd></td><td>节点上移 / 下移</td></tr>

@@ -382,3 +382,29 @@ kbd {
   font-size: 11px;
   border: 1px solid #d8dbe5;
 }
+
+/* ---------- 悬停提示 ---------- */
+.cmind-tooltip {
+  position: fixed;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  background: #232936;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 9px;
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  max-width: 320px;
+}
+.cmind-tooltip .kbd {
+  background: rgba(255,255,255,.16);
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}

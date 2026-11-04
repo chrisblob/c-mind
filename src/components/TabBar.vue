@@ -19,13 +19,13 @@ async function onAdd() {
       class="tab" :class="{ active: t.id === store.activeId }"
       @click="store.activeId = t.id"
       @click.middle="closeTab(t.id)"
-      :title="t.rel"
+      :data-tip="t.rel"
     >
       <span class="tname">{{ t.name }}</span>
       <span v-if="t.dirty" class="dot">•</span>
       <span class="close" @click.stop="closeTab(t.id)">✕</span>
     </div>
-    <button class="icon-btn tab-add" title="新建脑图 (⌘N)" @click="onAdd">＋</button>
+    <button class="icon-btn tab-add" data-tip="新建脑图" data-key="⌘N" @click="onAdd">＋</button>
     <div style="flex:1"></div>
     <div v-if="activeTab()" style="margin-bottom:6px;color:var(--text-dim);font-size:12px">
       {{ activeTab().rel }}
