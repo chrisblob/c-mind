@@ -172,7 +172,7 @@ CMIND_UITEST=1 pnpm start                 # 日志中应出现 [uitest] RESULT
 推 `v*` tag 即自动构建并上传到 GitHub Releases（`.github/workflows/release.yml`）：
 
 ```bash
-git tag -f -a v0.1.0 -m "release" && git push -f origin v0.1.0
+git tag -f -a v1.0.0 -m "release" && git push -f origin v1.0.0
 ```
 
 `examples/demo-workspace/` 内置了一套示例脑图库（产品路线图 / 团队知识库 / 学习笔记，
