@@ -540,7 +540,8 @@ function createWindow() {
     mainWindow.webContents.once('did-finish-load', async () => {
       await new Promise(r => setTimeout(r, 1800))
       try {
-        const result = await mainWindow.webContents.executeJavaScript('window.__cmindUITest(' + (process.env.CMIND_UITEST_SKIPGIT === '1' ? '"skipgit"' : '') + ')')
+        const mode = process.env.CMIND_UITEST_MODE || (process.env.CMIND_UITEST_SKIPGIT === '1' ? 'skipgit' : '')
+        const result = await mainWindow.webContents.executeJavaScript('window.__cmindUITest(' + (mode ? JSON.stringify(mode) : '') + ')')
         console.log('[uitest] RESULT ' + JSON.stringify(result, null, 2))
       } catch (e) {
         console.error('[uitest] failed:', e)

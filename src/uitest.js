@@ -5,6 +5,84 @@
 import { parseImportText, buildFreeMind, buildOpml, buildMarkdown, extToKind } from './formats.js'
 import { openMap, closeContextMenu } from './store.js'
 window.__cmindUITest = async function (mode) {
+  const sleepF = (ms) => new Promise(r => setTimeout(r, ms))
+  if (mode === 'focus') {
+    // ---- 专项验证：真实拖拽放大 / 画布放大 / 树排序 / 换行 ----
+    const S = window.__cmindStore
+    const out = { steps: [] }
+    const log = (name, data) => out.steps.push({ name, ...data })
+    const q = (s) => document.querySelector(s)
+    const qa = (s) => [...document.querySelectorAll(s)]
+    const setInput = (el, val) => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(el, val); el.dispatchEvent(new Event('input', { bubbles: true })) }
+    const submitModal = async (name) => { setInput(q('.modal input'), name); await sleepF(80); qa('.modal-foot button').find(x => x.textContent.trim() === '确定').click(); await sleepF(900) }
+    const ufPath = S.workspace + '/徐晓赫/测试二级文件夹/测试脑图.cmind'
+    await openMap(ufPath)
+    let waited = 0
+    const ready = () => { const m = window.__cmindMap; if (!m || ((m.getData().data || {}).text !== '测试脑图')) return false; const k = (m.renderer.root && m.renderer.root.children) || []; return k.length >= 6 && k.every(x => x.group) }
+    while (!ready() && waited < 20000) { await sleepF(300); waited += 300 }
+    await sleepF(600)
+    const M = window.__cmindMap
+    const node = M.renderer.root.children[0]
+    const imgEl = node.group.node.querySelector('image')
+    const before = { ...(node.getData('imageSize') || {}) }
+    // 悬停图片 → 出现调整手柄
+    imgEl.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 800, clientY: 500 }))
+    await sleepF(400)
+    const handle = q('.node-img-handle')
+    const btn = q('.node-image-resize')
+    const dragLog = { handleShown: !!(handle && handle.style.display !== 'none'), btnFound: !!btn, before }
+    if (btn) {
+      const r = btn.getBoundingClientRect()
+      const sx = r.left + r.width / 2, sy = r.top + r.height / 2
+      btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: sx, clientY: sy }))
+      // 拖动 +140/+100
+      const svgRoot = q('.canvas-holder svg') || document.body
+      for (let i = 1; i <= 6; i++) {
+        svgRoot.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX: sx + i * 25, clientY: sy + i * 18 }))
+        await sleepF(40)
+      }
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: sx + 140, clientY: sy + 100 }))
+      svgRoot.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: sx + 140, clientY: sy + 100 }))
+      await sleepF(600)
+      dragLog.after = node.getData('imageSize')
+      dragLog.grew = !!(dragLog.after && dragLog.after.width > before.width + 2)
+    }
+    log('real-drag', dragLog)
+    // 画布放大按钮
+    const scaleBefore = M.view.scale
+    const zoomBtn = qa('.toolbar button').find(b => b.getAttribute('data-tip') === '放大')
+    zoomBtn && zoomBtn.click(); await sleepF(120); zoomBtn && zoomBtn.click(); await sleepF(300)
+    log('canvas-zoom', { scaleBefore, scaleAfter: M.view.scale, zoomed: M.view.scale > scaleBefore })
+    // 树排序：同一文件夹连建两个
+    const sideBtn = (kw) => qa('.filetree button').find(b => b.textContent.includes(kw))
+    for (let i = 0; i < 30 && !qa('.tree-row').length; i++) await sleepF(200)
+    const dirRow = qa('.tree-row').find(r => r.textContent.includes('学习笔记'))
+    dirRow && dirRow.click(); await sleepF(300)
+    sideBtn('脑图') && sideBtn('脑图').click(); await sleepF(300); await submitModal('排序测试A')
+    sideBtn('脑图') && sideBtn('脑图').click(); await sleepF(300); await submitModal('排序测试B')
+    await sleepF(500)
+    const folder = S.tree.find(n => n.name === '学习笔记')
+    log('tree-order', { children: folder ? folder.children.map(c => c.name) : [], topIsNewest: !!(folder && folder.children[0] && folder.children[0].name.startsWith('排序测试B')) })
+    // 换行
+    const nd = (window.__cmindMap).renderer.root.children[0]
+    window.__cmindMap.renderer.textEdit.show({ node: nd })
+    await sleepF(400)
+    const el = q('.smm-node-edit-wrap')
+    let lb = { isEditBox: !!el }
+    if (el) {
+      el.focus(); el.innerHTML = 'A行'
+      const rng = document.createRange(); rng.selectNodeContents(el); rng.collapse(false)
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng)
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }))
+      await sleepF(150)
+      lb.htmlHasBr = el.innerHTML.includes('<br')
+      window.__cmindMap.renderer.textEdit.hideEditTextBox()
+      await sleepF(300)
+      lb.text = JSON.stringify(nd.getData('text'))
+    }
+    log('line-break-2', lb)
+    return out
+  }
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
   const S = window.__cmindStore
   const out = { steps: [] }
