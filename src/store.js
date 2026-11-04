@@ -293,6 +293,68 @@ export async function syncRenameMap(tab, newBase) {
   }
 }
 
+/**
+ * 移动/重命名后，重写全工作区 .cmind 文件里指向旧路径的 cmind:// 链接，保证脑图互链不失效。
+ * 支持文件夹整体移动（前缀匹配）；打开中且有未保存改动的文件跳过（避免覆盖用户编辑）。
+ * @returns {number} 被更新的文件数
+ */
+async function rewriteLinksAfterMove(oldRel, newRel) {
+  function walkMaps(list) {
+    return (list || []).flatMap(item =>
+      item.type === 'dir' ? walkMaps(item.children) : (item.isMap ? [item] : [])
+    )
+  }
+  const dirtyOpen = new Set(store.tabs.filter(t => t.dirty).map(t => t.path))
+  let fixed = 0
+  for (const m of walkMaps(store.tree)) {
+    try {
+      if (dirtyOpen.has(m.path)) continue
+      const raw = String(await api('fs:read', m.path))
+      if (!raw.includes('cmind://open?path=')) continue
+      let changed = false
+      const out = raw.replace(/cmind:\/\/open\?path=([^"'\s<>)]+)/g, (whole, enc) => {
+        let target
+        try { target = decodeURIComponent(enc) } catch { return whole }
+        let next = null
+        if (target === oldRel) next = newRel
+        else if (target.startsWith(oldRel + '/')) next = newRel + target.slice(oldRel.length)
+        if (!next) return whole
+        changed = true
+        return 'cmind://open?path=' + encodeURIComponent(next).replace(/%2F/g, '/')
+      })
+      if (changed) { await api('fs:write', m.path, out); fixed++ }
+    } catch { /* 单个文件读取失败不中断其余文件的重写 */ }
+  }
+  // 打开中且有未保存改动的脑图：同步修正内存里的链接，交由自动保存落盘
+  try {
+    const t = store.tabs.find(x => x.id === store.activeId)
+    const M = window.__cmindMap
+    if (t && t.type === 'map' && t.dirty && M && dirtyOpen.has(t.path)) {
+      const fix = (u) => {
+        if (typeof u !== 'string' || !u.startsWith('cmind://open?path=')) return u
+        let target
+        try { target = decodeURIComponent(u.slice('cmind://open?path='.length)) } catch { return u }
+        let next = null
+        if (target === oldRel) next = newRel
+        else if (target.startsWith(oldRel + '/')) next = newRel + target.slice(oldRel.length)
+        return next ? 'cmind://open?path=' + encodeURIComponent(next).replace(/%2F/g, '/') : u
+      }
+      const doc = M.getData(true)
+      let count = 0
+      const w2 = (n) => {
+        if (n.data && n.data.hyperlink) {
+          const u2 = fix(n.data.hyperlink)
+          if (u2 !== n.data.hyperlink) { n.data.hyperlink = u2; count++ }
+        }
+        ;(n.children || []).forEach(w2)
+      }
+      w2(doc.root)
+      if (count) { M.setData(doc); fixed++ }
+    }
+  } catch { /* 内存修正失败不影响磁盘重写结果 */ }
+  return fixed
+}
+
 export async function renamePath(p, newName) {
   let n = (newName || '').trim()
   if (!n) return
@@ -301,7 +363,9 @@ export async function renamePath(p, newName) {
   const oldPath = p
   const newPath = p.slice(0, p.lastIndexOf('/') + 1) + n
   await api('fs:rename', oldPath, n)
-  await refreshTree()
+  await refreshTree() // 先刷新树（store.tree 里已是新路径），再做链接重写
+  const fixed = await rewriteLinksAfterMove(relOf(oldPath), relOf(newPath))
+  if (fixed) toast(`已同步更新 ${fixed} 个文件里的脑图链接`, 'ok')
   syncTabsAfterPathChange(oldPath, newPath)
 }
 
@@ -321,7 +385,9 @@ function syncTabsAfterPathChange(oldPath, newPath) {
 
 export async function movePath(src, destDir) {
   const newPath = await api('fs:move', src, destDir)
-  await refreshTree()
+  await refreshTree() // 先刷新树，再做链接重写
+  const fixed = await rewriteLinksAfterMove(relOf(src), relOf(newPath))
+  if (fixed) toast(`已同步更新 ${fixed} 个文件里的脑图链接`, 'ok')
   syncTabsAfterPathChange(src, newPath)
 }
 

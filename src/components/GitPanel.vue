@@ -69,7 +69,7 @@ async function push() {
   busy.value = true
   try {
     const r = await api('git:push')
-    toast('已推送到 ' + r.branch, 'ok')
+    toast(`已推送 ${r.ahead || 0} 个提交到 ${r.branch}`, 'ok')
     await refresh()
   } catch (e) {
     toast('推送失败：' + (e.message || e), 'error')

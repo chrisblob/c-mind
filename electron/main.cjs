@@ -491,6 +491,9 @@ function registerGitIpc() {
     const git = getGit()
     const s = await git.status()
     const branch = s.current || 'main'
+    if (s.ahead === 0 && s.tracking) {
+      throw new Error('本地没有待推送的提交（远程已同步）。请先在上方填写说明并「提交」，再「推送」')
+    }
     try {
       // 形式：git push <remote> <branch>（不要把 -u 插在 remote 之后，git 会把 origin 当 refspec）
       await git.push([tokenUrl(cfg, cfg.git.remote), branch])
@@ -504,7 +507,7 @@ function registerGitIpc() {
     } catch (err) {
       throw friendlyGitError(err)
     }
-    return { ok: true, branch }
+    return { ok: true, branch, ahead: s.ahead || 0 }
   })
   ipcMain.handle('git:pull', async () => {
     const cfg = loadConfig()

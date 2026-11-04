@@ -161,6 +161,52 @@ window.__cmindUITest = async function (mode) {
       const namesAfter = S.tree.map(n => n.name).join('|')
       const cfg = await window.cmind.invoke('config:get')
       log('reorder-check', { namesBefore, namesAfter, persisted: !!(cfg.treeOrder && cfg.treeOrder[ws]) })
+      // 链接随移动修复：把 团队知识库.cmind 移入 学习笔记，其他脑图里指向它的 cmind:// 链接应自动更新
+      const mapRow2 = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes('产品路线图'))
+      if (mapRow2 && window.__cmindMove) {
+        // 先记录打开标签的 dirty 状态（dirty 会被跳过重写）
+        const dirtyNow = S.tabs.filter(t => t.dirty).map(t => t.name)
+        mapRow2.click()
+        await new Promise(r => setTimeout(r, 2000))
+        const prPath = S.tabs.find(t => t.id === S.activeId).path
+        const beforeRaw = String(await window.cmind.invoke('fs:read', prPath))
+        const encOld = encodeURIComponent('团队知识库.cmind').replace(/%2F/g, '/')
+        const beforeHas = beforeRaw.includes('cmind://open?path=' + encOld)
+        await window.__cmindMove(ws + '/团队知识库.cmind', ws + '/学习笔记')
+        await new Promise(r => setTimeout(r, 1600))
+        const afterRaw = String(await window.cmind.invoke('fs:read', prPath))
+        const links = (afterRaw.match(/cmind:\/\/open\?path=([^"'\s<>)]+)/g) || []).map(x => {
+          try { return decodeURIComponent(x.replace('cmind://open?path=', '')) } catch { return x }
+        })
+        let targetOk = false
+        try { await window.cmind.invoke('fs:read', ws + '/学习笔记/团队知识库.cmind'); targetOk = true } catch {}
+        log('link-move-check', {
+          beforeHas,
+          links: links.slice(0, 6),
+          targetMoved: targetOk,
+          dirtyNow,
+          toasts: S.toasts.map(t2 => t2.text).slice(-4)
+        })
+        // dirty 打开场景：给当前脑图制造未保存改动，再反向移动 团队知识库 回根目录
+        const MM = window.__cmindMap
+        if (MM) {
+          MM.execCommand('INSERT_CHILD_NODE', false, [MM.renderer.root], { data: { text: 'dirty-probe' } }, [])
+          await new Promise(r => setTimeout(r, 400))
+          const dirtyTab = S.tabs.find(t => t.id === S.activeId)
+          await window.__cmindMove(ws + '/学习笔记/团队知识库.cmind', ws)
+          await new Promise(r => setTimeout(r, 2000)) // 等自动保存(900ms)+重写
+          const doc = MM.getData(true)
+          const memLinks = []
+          ;(function w3(n) { if (n.data && n.data.hyperlink) memLinks.push(n.data.hyperlink); (n.children || []).forEach(w3) })(doc.root)
+          const diskRaw = String(await window.cmind.invoke('fs:read', dirtyTab.path))
+          log('dirty-move-check', {
+            wasDirty: dirtyTab.dirty,
+            memLinks: memLinks.map(x => decodeURIComponent(x.replace('cmind://open?path=', ''))).slice(0, 6),
+            diskHasRootLink: diskRaw.includes('cmind://open?path=' + encodeURIComponent('团队知识库.cmind').replace(/%2F/g, '/')),
+            diskStaleLink: diskRaw.includes(encodeURIComponent('学习笔记/团队知识库.cmind'))
+          })
+        }
+      }
     } catch (e) {
       log('import-fail', { error: String(e && e.message || e) })
     }
