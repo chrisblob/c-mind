@@ -60,8 +60,10 @@ jobs:
         run: |
           set -o pipefail
           DEBUG=electron-builder pnpm exec electron-builder --win --x64 2>&1 | tee win-build.log || {
-            echo "BUILD FAILED, last lines:"
-            tail -n 14 win-build.log | cut -c1-900 | while IFS= read -r l; do echo "::error::$l"; done
+            echo "BUILD FAILED, error lines:"
+            grep -n "⨯\|Error:\|error:" win-build.log | tail -n 8 | cut -c1-500 | while IFS= read -r l; do echo "::error::$l"; done
+            echo "last progress:"
+            tail -n 6 win-build.log | cut -c1-400 | while IFS= read -r l; do echo "::error::$l"; done
             exit 1
           }
       - name: Upload release assets (gh CLI)
@@ -70,6 +72,6 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME}"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "C-Mind ${TAG#v}" --generate-notes
-          gh release upload "$TAG" release/C-Mind-*-win-x64-setup.exe release/C-Mind-*-win-x64.zip --clobber
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "C-Mind ${TAG#v}" --generate-notes || true
+          for i in 1 2 3; do gh release upload "$TAG" release/C-Mind-*-win-x64-setup.exe release/C-Mind-*-win-x64.zip --clobber && break; sleep 15; done
           gh release view "$TAG" --json assets -q '.assets[].name'
