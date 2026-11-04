@@ -196,7 +196,16 @@ git tag -f -a v0.1.0 -m "release" && git push -f origin v0.1.0
 
 ## 十、下载安装
 
-- **安装包**：[Releases](https://github.com/chrisblob/c-mind/releases) 下载 `C-Mind-<version>-arm64.dmg`，拖入「应用程序」即可
+| 平台 | 文件 | 安装方式 |
+| --- | --- | --- |
+| macOS (Apple Silicon) | `C-Mind-<version>-arm64.dmg` | 打开 dmg，拖入「应用程序」 |
+| Windows 10/11 x64 | `C-Mind-<version>-win-x64-setup.exe` | 双击安装（可选安装目录） |
+| Windows 免安装 | `C-Mind-<version>-win-x64.zip` | 解压后运行 `C-Mind.exe` |
+
+- **Windows 注意**：
+  - 应用未做代码签名，SmartScreen 可能提示「已保护你的电脑」→ 点 **更多信息 → 仍要运行**
+  - Git 绑定 / 提交推送功能需要本机已安装 [Git for Windows](https://git-scm.com/download/win)（脑图编辑不依赖）
+- **macOS 注意**：未公证，首次打开右键 → 打开，或 `xattr -cr /Applications/C-Mind.app`
 - **从源码构建**：见「七、本地开发与打包」
 - 未做代码签名/公证：首次打开若提示无法验证开发者，请右键 → 打开，或到「系统设置 → 隐私与安全性」点「仍要打开」
 
