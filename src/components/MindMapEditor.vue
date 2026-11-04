@@ -190,6 +190,9 @@ onMounted(async () => {
     }
     uiContextMenu(e.clientX || 0, e.clientY || 0, items)
   })
+  // 点击节点里的图片 → 直接弹窗看大图（可缩放）
+  mindMap.on('node_img_click', (node) => { openImageViewer(node) })
+  mindMap.on('node_img_dblclick', (node) => { openImageViewer(node) })
   mindMap.on('scale', (s) => { scale.value = s })
   mindMap.on('node_tree_render_end', () => { loading = false })
   setTimeout(() => { loading = false }, 1500)
@@ -754,7 +757,7 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
             <tr><td>触控板 / 滚轮</td><td>缩放画布</td></tr>
             <tr><td><kbd>⌘S</kbd> / <kbd>⌘N</kbd> / <kbd>⌘W</kbd></td><td>保存 / 新建脑图 / 关闭标签</td></tr>
             <tr><td>点击 🔗 图标</td><td>打开节点链接（网页 → 浏览器，脑图 → 新标签页）</td></tr>
-            <tr><td>选中图片节点 + <kbd>🔍</kbd></td><td>弹窗查看图片大图（可放大 / 缩小 / 拖动）</td></tr>
+            <tr><td>点击节点中的图片</td><td>弹窗查看图片大图（可放大 / 缩小 / 拖动）</td></tr>
           </table>
         </div>
         <div class="modal-foot">

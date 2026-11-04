@@ -29,6 +29,12 @@ window.__cmindUITest = async function (mode) {
     imgEl.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 800, clientY: 500 }))
     await sleepF(300)
     log('thumb-check', { imageSize: node.getData('imageSize'), handleShown: !!q('.node-img-handle'), before })
+    // 点图片本身 → 应该直接弹窗
+    imgEl.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 800, clientY: 500 }))
+    await sleepF(800)
+    const clickOpen = { opened: !!q('.img-viewer') }
+    if (q('.img-viewer')) { q('.img-viewer .viewer-bar button.primary').click(); await sleepF(300) }
+    log('img-click-open', clickOpen)
     // 激活图片节点 → 工具栏「查看图片大图」→ 弹窗缩放
     node.active(); await sleepF(250)
     const viewBtn = qa('.toolbar button').find(b => (b.getAttribute('data-tip') || '').includes('查看图片大图'))

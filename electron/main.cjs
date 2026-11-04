@@ -549,6 +549,52 @@ function createWindow() {
       setTimeout(() => app.quit(), 500)
     })
   }
+  // 图片查看器截图（仅开发验证用）
+  if (process.env.CMIND_SMOKE_VIEWER) {
+    mainWindow.webContents.once('did-finish-load', async () => {
+      await new Promise(r => setTimeout(r, 1500))
+      try {
+        const r = await mainWindow.webContents.executeJavaScript(`
+          (async () => {
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+            const rows = [...document.querySelectorAll('.tree-row')]
+            const t = rows.find(x => x.textContent.includes('产品路线图'))
+            if (t) t.click()
+            await sleep(2600)
+            const M = window.__cmindMap
+            if (!M) return 'no map'
+            const root = M.renderer.root
+            const c = document.createElement('canvas'); c.width = 640; c.height = 400
+            const g = c.getContext('2d')
+            g.fillStyle = '#eef2ff'; g.fillRect(0, 0, 640, 400)
+            g.strokeStyle = '#4a7dff'; g.lineWidth = 6; g.strokeRect(20, 20, 600, 360)
+            g.fillStyle = '#334155'; g.font = 'bold 30px sans-serif'
+            g.fillText('图片大图预览示例', 60, 110)
+            g.font = '20px sans-serif'; g.fillStyle = '#64748b'
+            g.fillText('＋/－ 按钮 · 滚轮缩放 · 拖动平移 · 适合窗口', 60, 170)
+            const url = c.toDataURL('image/png')
+            const node = root.children[0]
+            node.active(); await sleep(300)
+            M.execCommand('SET_NODE_IMAGE', node, { url, title: '示例图片', width: 132, height: 83, custom: false })
+            await sleep(500)
+            node.active(); await sleep(400)
+            const imgEl = node.group.node.querySelector('image')
+            if (!imgEl) return 'no img el'
+            imgEl.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 700, clientY: 400 }))
+            await sleep(1000)
+            if (!document.querySelector('.img-viewer')) return 'viewer not open'
+            const plus = [...document.querySelectorAll('.img-viewer .viewer-bar button')].find(x => x.textContent.trim() === '＋')
+            plus && plus.click(); await sleep(300)
+            return 'ok'
+          })()`)
+        console.log('[smoke-viewer]', r)
+        const img = await mainWindow.webContents.capturePage()
+        fs.writeFileSync(path.join(__dirname, '..', 'build', 'screenshot-viewer.png'), img.toPNG())
+        console.log('[smoke-viewer] saved')
+      } catch (e) { console.error('[smoke-viewer] failed:', e) }
+      setTimeout(() => app.quit(), 500)
+    })
+  }
   // 冒烟截图（仅开发验证用）
   if (process.env.CMIND_SMOKE_SHOT) {
     mainWindow.webContents.once('did-finish-load', async () => {
