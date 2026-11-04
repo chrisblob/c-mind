@@ -72,7 +72,8 @@ async function readTree(dir, rel = '') {
   }
   out.sort((a, b) => {
     if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
-    return a.name.localeCompare(b.name, 'zh-Hans-CN')
+    // 自然排序：v2 排在 v10 前面
+    return a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
   })
   return out
 }
@@ -235,25 +236,89 @@ function getGit() {
   return simpleGit({ baseDir: root })
 }
 
+function friendlyGitError(err) {
+  const msg = [String(err && err.message || err), ...((err && err.rejected) || []).map(r => r && r.message || '')].join('\n')
+  if (/non-fast-forward|behind its remote counterpart|fetch first/i.test(msg))
+    return new Error('远程分支有新提交，请先点击「拉取」合并后再推送')
+  if (/Permission denied|publickey/i.test(msg))
+    return new Error('SSH 认证失败：请确认本机已配置可写该仓库的 SSH Key（ssh -T git@github.com 验证）')
+  if (/Path with spaces|dubious ownership/i.test(msg))
+    return new Error(msg)
+  return err
+}
+
 function registerGitIpc() {
   ipcMain.handle('git:bind', async (_e, { url, user, token }) => {
     const cfg = loadConfig()
     if (!cfg.workspaceDir) throw new Error('请先设置工作区目录')
     if (!/^https?:\/\/|^git@/i.test(url || '')) throw new Error('仓库地址需为 https:// 或 git@ 形式')
     const git = getGit()
-    const isRepo = await git.checkIsRepo().catch(() => false)
-    if (!isRepo) await git.init()
+
+    // 仅当工作区本身不是仓库、或它嵌套在其它仓库内时，才在工作区执行 init
+    let toplevel = ''
+    try { toplevel = (await git.revparse(['--show-toplevel'])).trim() } catch {}
+    if (toplevel !== cfg.workspaceDir) {
+      try { await git.init(['-b', 'main']) } catch { await git.init() }
+    }
+
     const remotes = await git.getRemotes(true)
     const hasOrigin = remotes.some(r => r.name === 'origin')
     if (hasOrigin) await git.remote(['set-url', 'origin', url])
     else await git.addRemote('origin', url)
+
+    // 补齐提交者身份（否则 commit 会报 "Please tell me who you are"）
+    try {
+      const name = await git.getConfig('user.name')
+      if (!name.value) await git.addConfig('user.name', user || 'C-Mind User')
+      const email = await git.getConfig('user.email')
+      if (!email.value) await git.addConfig('user.email', (user || 'cmind') + '@users.noreply.github.com')
+    } catch {}
+
     const newCfg = { ...cfg, git: { remote: url, user: user || '', token: token || '' } }
     saveConfig(newCfg)
     // 尝试同步一次远程信息，校验地址/凭据（失败不阻断绑定）
     let authOk = true
     let authMsg = ''
-    try { await git.fetch(['origin', '--quiet']) } catch (err) { authOk = false; authMsg = String(err && err.message || err).split('\n')[0] }
-    return { ok: true, authOk, authMsg }
+    try {
+      await git.fetch(['origin', '--quiet'])
+    } catch (err) {
+      const msg = String(err && err.message || err)
+      if (/couldn't find remote ref|does not appear to be a git repo/i.test(msg)) {
+        // 空远程仓库：fetch 无 refs，属正常
+      } else {
+        authOk = false
+        authMsg = msg.split('\n')[0]
+      }
+    }
+    // 本地尚无任何提交而远程已有内容 → 拉取远程作为基线，避免 push 被拒（non-fast-forward）
+    let baseMsg = ''
+    if (authOk) {
+      let pulled = false
+      try {
+        await git.raw(['rev-parse', '--verify', 'HEAD'])
+        pulled = true // 已有提交，无需基线
+      } catch {}
+      if (!pulled) {
+        try {
+          const show = await git.raw(['remote', 'show', 'origin'])
+          const m = show.match(/HEAD branch:\s*(\S+)/)
+          if (m) { await git.pull(['origin', m[1]]); pulled = true }
+        } catch (e) { baseMsg = String(e.message || e).split('\n')[0] }
+      }
+      if (!pulled) {
+        // 本地未提交内容与远程同名文件冲突：先提交本地，再合并远程历史
+        try {
+          const s0 = await git.status()
+          if (s0.files.length) {
+            await git.add('-A')
+            await git.commit('本地内容（绑定远程仓库时自动提交）')
+            await git.pull(['origin', 'main', '--allow-unrelated-histories', '--no-rebase'])
+            pulled = true
+          }
+        } catch (e2) { baseMsg = String(e2.message || e2).split('\n')[0] }
+      }
+    }
+    return { ok: true, authOk, authMsg, baseMsg }
   })
   ipcMain.handle('git:unbind', async () => {
     const cfg = loadConfig()
@@ -265,18 +330,41 @@ function registerGitIpc() {
     const cfg = loadConfig()
     const root = getWorkspace()
     if (!root) throw new Error('尚未设置工作区目录')
-    const isRepo = await getGit().checkIsRepo().catch(() => false)
-    if (!isRepo) return { isRepo: false, bound: !!cfg.git }
-    const s = await getGit().status()
+    let toplevel = ''
+    const git = getGit()
+    try { toplevel = (await git.revparse(['--show-toplevel'])).trim() } catch {}
+    if (!toplevel) return { isRepo: false, bound: !!cfg.git }
+    const s = await git.status()
+    let branches = []
+    try { branches = (await git.branchLocal()).all } catch {}
     return {
       isRepo: true,
+      ownRepo: toplevel === root, // 是否为工作区自身的仓库（而非嵌套在外部仓库中）
       bound: !!cfg.git,
       branch: s.current,
       ahead: s.ahead,
       behind: s.behind,
       tracking: s.tracking,
+      branches,
       changed: s.files.map(f => ({ path: f.path, flag: f.index === '?' ? 'untracked' : (f.index || f.working_dir) }))
     }
+  })
+  ipcMain.handle('git:branches', async () => {
+    const git = getGit()
+    const local = await git.branchLocal()
+    return { current: local.current, all: local.all }
+  })
+  ipcMain.handle('git:checkout', async (_e, branch) => {
+    if (!branch) throw new Error('分支名不能为空')
+    await getGit().checkout(branch)
+    return { ok: true, branch }
+  })
+  ipcMain.handle('git:createBranch', async (_e, name) => {
+    const branch = String(name || '').trim()
+    if (!branch) throw new Error('分支名不能为空')
+    if (/[\s~^:?*[\\]/.test(branch)) throw new Error('分支名包含非法字符')
+    await getGit().checkout(['-b', branch])
+    return { ok: true, branch }
   })
   ipcMain.handle('git:commit', async (_e, message) => {
     const msg = String(message || '').trim()
@@ -290,8 +378,21 @@ function registerGitIpc() {
     const cfg = loadConfig()
     if (!cfg.git) throw new Error('尚未绑定远程仓库')
     const git = getGit()
-    const branch = (await git.status()).current || 'main'
-    await git.push([tokenUrl(cfg, cfg.git.remote), `HEAD:refs/heads/${branch}`])
+    const s = await git.status()
+    const branch = s.current || 'main'
+    try {
+      // 形式：git push <remote> <branch>（不要把 -u 插在 remote 之后，git 会把 origin 当 refspec）
+      await git.push([tokenUrl(cfg, cfg.git.remote), branch])
+      // 首次推送（无上游分支）推送后补设跟踪，否则之后 git push 会报 no upstream branch
+      if (!s.tracking) {
+        try {
+          await git.fetch(['origin', branch])
+          await git.branch([`--set-upstream-to=origin/${branch}`, branch])
+        } catch {}
+      }
+    } catch (err) {
+      throw friendlyGitError(err)
+    }
     return { ok: true, branch }
   })
   ipcMain.handle('git:pull', async () => {
@@ -299,7 +400,11 @@ function registerGitIpc() {
     if (!cfg.git) throw new Error('尚未绑定远程仓库')
     const git = getGit()
     const branch = (await git.status()).current || 'main'
-    await git.pull([tokenUrl(cfg, cfg.git.remote), branch, '--no-rebase'])
+    try {
+      await git.pull([tokenUrl(cfg, cfg.git.remote), branch, '--no-rebase'])
+    } catch (err) {
+      throw friendlyGitError(err)
+    }
     return { ok: true, branch }
   })
   ipcMain.handle('git:log', async () => {

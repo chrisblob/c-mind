@@ -3,7 +3,7 @@
  * Git 抽屉：工作区绑定 GitHub 仓库、查看状态、提交 / 推送 / 拉取 / 历史
  */
 import { ref, onMounted } from 'vue'
-import { store, api, toast } from '../store.js'
+import { store, api, toast, uiPrompt } from '../store.js'
 
 const form = ref({ url: '', user: '', token: '' })
 const binding = ref(false)
@@ -88,6 +88,32 @@ async function pull() {
 }
 
 const flagText = { untracked: '＋', M: 'M', A: 'A', D: 'D', R: 'R' }
+
+async function onBranchChange(branch) {
+  if (!branch || branch === status.value.branch) return
+  busy.value = true
+  try {
+    await api('git:checkout', branch)
+    toast('已切换到分支 ' + branch, 'ok')
+    await refresh()
+  } catch (e) {
+    toast('切换分支失败：' + (e.message || e), 'error')
+    await refresh()
+  } finally { busy.value = false }
+}
+
+async function newBranch() {
+  const name = await uiPrompt('新建分支（基于当前分支）', '分支名', '', '例如：feature/roadmap', true)
+  if (!name) return
+  busy.value = true
+  try {
+    await api('git:createBranch', name)
+    toast('已创建并切换到 ' + name, 'ok')
+    await refresh()
+  } catch (e) {
+    toast('创建分支失败：' + (e.message || e), 'error')
+  } finally { busy.value = false }
+}
 </script>
 
 <template>
@@ -125,10 +151,19 @@ const flagText = { untracked: '＋', M: 'M', A: 'A', D: 'D', R: 'R' }
       <!-- 状态 -->
       <div class="git-section" v-if="status && status.isRepo">
         <h4>状态</h4>
-        <div class="status-line">
-          <span class="badge">{{ status.branch || '无分支' }}</span>
+        <div class="status-line" style="flex-wrap:wrap">
+          <select
+            v-if="status.branches && status.branches.length"
+            :value="status.branch" title="切换分支" style="width:auto"
+            @change="onBranchChange($event.target.value)"
+          >
+            <option v-for="b in status.branches" :key="b" :value="b">{{ b }}</option>
+          </select>
+          <span v-else class="badge">{{ status.branch || '无分支' }}</span>
+          <button class="icon-btn" title="从当前分支新建分支" @click="newBranch">＋ 分支</button>
           <span class="badge gray" v-if="status.tracking">↑{{ status.ahead }} ↓{{ status.behind }}</span>
           <span v-if="!status.tracking" class="badge warn">未跟踪远程分支</span>
+          <span v-if="status.ownRepo === false" class="badge warn">嵌套于外部仓库</span>
         </div>
         <div class="changed-list" v-if="status.changed.length">
           <div class="ci" v-for="(f, i) in status.changed" :key="i">

@@ -5,7 +5,7 @@
  */
 import { ref, computed } from 'vue'
 import {
-  store, api, openMap, createMap, createDir, createRawFile, openRawFile,
+  store, api, openMap, createMap, createDir, openRawFile,
   renamePath, movePath, deletePath, uiPrompt, uiContextMenu, collectDirs, toast
 } from '../store.js'
 
@@ -24,6 +24,7 @@ const parentDir = computed(() =>
 
 function onClick() {
   if (props.node.type === 'dir') {
+    store.currentDir = props.node.path // 标记当前操作文件夹
     expanded.value = !expanded.value
   } else if (props.node.isMap) {
     openMap(props.node.path)
@@ -44,12 +45,6 @@ async function newFolderIn(dir) {
   const name = await uiPrompt(`新建文件夹（${nameOf(dir)}）`, '文件夹名称', '', '例如：项目资料', true)
   if (!name) return
   await createDir(dir, name)
-  if (props.node.type === 'dir') expanded.value = true
-}
-async function newFileIn(dir) {
-  const name = await uiPrompt(`新建文件（${nameOf(dir)}）`, '文件名（含扩展名）', '', '例如：notes.md', true)
-  if (!name) return
-  await createRawFile(dir, name)
   if (props.node.type === 'dir') expanded.value = true
 }
 function nameOf(dir) {
@@ -90,19 +85,15 @@ function confirmPick() {
 function menuItems() {
   const items = []
   const target = parentDir.value
-  const createItems = [
-    { label: '＋ 新建脑图', action: () => newMapIn(target) },
-    { label: '＋ 新建文件夹', action: () => newFolderIn(target) },
-    { label: '＋ 新建文件', action: () => newFileIn(target) }
-  ]
-
   if (props.node.type === 'dir') {
-    items.push(...createItems)
+    items.push(
+      { label: '＋ 新建脑图', action: () => newMapIn(target) },
+      { label: '＋ 新建文件夹', action: () => newFolderIn(target) }
+    )
   } else {
     items.push({ label: props.node.isMap ? '打开脑图' : '用默认程序打开', action: onClick })
     items.push({ label: '＋ 新建同级脑图', action: () => newMapIn(target) })
     items.push({ label: '＋ 新建同级文件夹', action: () => newFolderIn(target) })
-    items.push({ label: '＋ 新建同级文件', action: () => newFileIn(target) })
   }
   items.push(
     { label: '重命名', action: menuRename },

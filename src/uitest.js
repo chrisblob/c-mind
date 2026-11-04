@@ -1,5 +1,6 @@
 /**
  * UI 自动化走查脚本（仅在 CMIND_UITEST=1 时由主进程注入执行）
+ * 覆盖：当前目录新建、图片插入渲染、脑图链接树形选择、git 绑定/分支/提交
  */
 window.__cmindUITest = async function () {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
@@ -14,113 +15,140 @@ window.__cmindUITest = async function () {
     el.dispatchEvent(new Event('input', { bubbles: true }))
   }
   const log = (name, data) => out.steps.push({ name, ...data })
-  const sideBtn = (kw, exclude) => [...document.querySelectorAll('.filetree button')]
-    .find(b => b.textContent.includes(kw) && (!exclude || !b.textContent.includes(exclude)))
+  const sideBtn = (kw) => [...document.querySelectorAll('.filetree button')].find(b => b.textContent.includes(kw))
   const clickBtnInModal = (label) => {
     const b = qa('.modal-foot button').find(x => x.textContent.trim() === label)
     if (b) b.click()
     return !!b
   }
-
-  // ---------- 1. 新建脑图：弹框 & 必填校验 ----------
-  sideBtn('脑图') && sideBtn('脑图').click()
-  await sleep(350)
-  log('open-new-map-dialog', {
-    title: q('.modal-head')?.textContent,
-    inputValue: q('.modal input')?.value,
-    modalCount: qa('.modal').length
-  })
-
-  // 1a. 空名称点确定 → 应保持打开
-  clickBtnInModal('确定')
-  await sleep(300)
-  log('empty-name-submit', { modalCount: qa('.modal').length })
-
-  // 1b. 填名称点确定 → 应创建并关闭
-  setInput(q('.modal input'), '测试脑图')
-  await sleep(80)
-  clickBtnInModal('确定')
-  await sleep(1200)
-  log('submit-valid-name', {
-    modalCount: qa('.modal').length,
-    tabs: S.tabs.map(t => t.name),
-    treeNames: S.tree.map(n => n.name)
-  })
-
-  // ---------- 2. 取消不应创建 ----------
-  const tabCountBefore = S.tabs.length
-  sideBtn('脑图') && sideBtn('脑图').click()
-  await sleep(300)
-  const cancelFound = clickBtnInModal('取消')
-  await sleep(400)
-  log('cancel', { cancelFound, modalCount: qa('.modal').length, tabsDelta: S.tabs.length - tabCountBefore })
-
-  // ---------- 3. 文件夹节点右键菜单 ----------
-  const dirRow = qa('.tree-row').find(r => r.textContent.includes('学习笔记'))
-  if (dirRow) {
-    dirRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 300 }))
-    await sleep(250)
-  }
-  log('dir-context-menu', { found: !!dirRow, items: qa('.context-menu .mi').map(e => e.textContent.trim()) })
-
-  // ---------- 4. 右键文件夹 → 新建脑图 ----------
-  const newMapItem = qa('.context-menu .mi').find(e => e.textContent.includes('新建脑图'))
-  if (newMapItem) {
-    newMapItem.click()
-    await sleep(300)
-    setInput(q('.modal input'), '子目录脑图')
-    await sleep(80)
-    clickBtnInModal('确定')
-    await sleep(1000)
-  }
-  log('create-map-in-folder', { modalCount: qa('.modal').length, tabs: S.tabs.map(t => t.name) })
-  const folder = S.tree.find(n => n.name === '学习笔记')
-  log('folder-children', { children: folder ? folder.children.map(c => c.name) : [] })
-
-  // ---------- 5. 新建普通文件 ----------
-  const fileBtn = sideBtn('文件', '文件夹')
-  log('new-file-button', { exists: !!fileBtn })
-  if (fileBtn) {
-    fileBtn.click()
-    await sleep(300)
-    setInput(q('.modal input'), 'notes.md')
+  const submitModal = async (name) => {
+    setInput(q('.modal input'), name)
     await sleep(80)
     clickBtnInModal('确定')
     await sleep(900)
   }
-  log('create-file', { modalCount: qa('.modal').length, treeNames: S.tree.map(n => n.name) })
 
-  // ---------- 6. 文件节点右键：应支持新建同级脑图/文件夹/文件 ----------
-  const fileRow = qa('.tree-row').find(r => r.textContent.includes('notes.md'))
-  if (fileRow) {
-    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 240, clientY: 320 }))
-    await sleep(250)
-  }
-  log('file-context-menu', { items: qa('.context-menu .mi').map(e => e.textContent.trim()) })
-  q('.context-menu') && q('.context-menu').remove()
-
-  // ---------- 7. 根节点改名 → 文件名同步 ----------
-  const map = window.__cmindMap
-  let renameInfo = { skipped: true }
-  if (map) {
-    const beforeTab = S.tabs.find(t => t.id === S.activeId)
-    map.execCommand('SET_NODE_TEXT', map.renderer.root, '改名后的根主题')
-    await sleep(2500) // 等防抖保存 + 改名
-    const afterTab = S.tabs.find(t => t.id === S.activeId)
-    const files = []
-    const walk = (list, base) => list.forEach(n => {
-      if (n.type === 'dir') walk(n.children, base + n.name + '/')
-      else files.push(base + n.name)
+  // ---------- 0. 先绑定远程仓库（真实用户流程：绑定 → 产内容 → 提交推送） ----------
+  let gitBind = {}
+  try {
+    gitBind = await window.cmind.invoke('git:bind', {
+      url: 'git@github.com:chrisblob/mind-file.git', user: 'chrisblob', token: ''
     })
-    walk(S.tree, '')
-    renameInfo = {
-      before: beforeTab && beforeTab.name,
-      afterTabName: afterTab && afterTab.name,
-      fileExists: files.some(f => f.includes('改名后的根主题')),
-      files
+    const st = await window.cmind.invoke('git:status')
+    gitBind.statusAfterBind = { branch: st.branch, branches: st.branches, tracking: st.tracking }
+  } catch (e) { gitBind = { error: String(e.message || e) } }
+  log('git-bind', gitBind)
+
+  // ---------- 1. 点击文件夹 → 当前目录切换 → 侧栏新建脑图落在该文件夹 ----------
+  const dirRow = qa('.tree-row').find(r => r.textContent.includes('学习笔记'))
+  if (dirRow) { dirRow.click(); await sleep(300) }
+  log('current-dir-after-folder-click', { currentDir: S.currentDir })
+
+  sideBtn('脑图') && sideBtn('脑图').click()
+  await sleep(300)
+  await submitModal('当前目录脑图')
+  const folder = S.tree.find(n => n.name === '学习笔记')
+  log('create-in-current-dir', {
+    currentDir: S.currentDir,
+    folderChildren: folder ? folder.children.map(c => c.name) : [],
+    tabs: S.tabs.map(t => t.name)
+  })
+
+  // ---------- 1b. 再建一张脑图（供链接选择用） ----------
+  sideBtn('脑图') && sideBtn('脑图').click()
+  await sleep(300)
+  await submitModal('第二张脑图')
+
+  // ---------- 2. 插入图片：节点应出现带尺寸的 image 元素 ----------
+  const tb = qa('.toolbar button')
+  log('toolbar-debug', {
+    toolbarCount: tb.length,
+    hasMap: typeof window.__cmindMap,
+    hasActive: window.__cmindMap ? window.__cmindMap.renderer.activeNodeList.length : -1,
+    titles: tb.map(b => b.title)
+  })
+  const imgBtn = tb.find(b => b.title === '插入图片')
+  const PNG_RED = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+  let imgResult = { skipped: true }
+  if (imgBtn && window.__cmindMap) {
+    const M = window.__cmindMap
+    M.renderer.root.active() // 激活根节点
+    await sleep(200)
+    M.execCommand('INSERT_CHILD_NODE')
+    await sleep(400)
+    log('after-insert-child', { activeCount: M.renderer.activeNodeList.length })
+    imgBtn.click()
+    await sleep(300)
+    const urlInput = q('.modal input[type="url"]')
+    if (urlInput) {
+      setInput(urlInput, PNG_RED)
+      await sleep(80)
+      clickBtnInModal('确定')
+      await sleep(1200)
+      const imgs = qa('.canvas-holder image')
+      imgResult = {
+        imageCount: imgs.length,
+        firstSize: imgs[0] ? (imgs[0].getAttribute('width') + 'x' + imgs[0].getAttribute('height')) : null
+      }
     }
   }
-  log('root-rename', renameInfo)
+  log('insert-image', imgResult)
+
+  // ---------- 3. 脑图链接弹框：按目录层级展示 ----------
+  const linkBtn = qa('.toolbar button').find(b => b.title && b.title.includes('插入链接'))
+  let linkResult = { skipped: true }
+  if (linkBtn) {
+    const M2 = window.__cmindMap
+    if (M2 && !M2.renderer.activeNodeList.length) { M2.renderer.root.active(); await sleep(200) }
+    linkBtn.click()
+    await sleep(300)
+    const radio = qa('.modal input[type="radio"]')[1]
+    log('link-radio', { radioCount: qa('.modal input[type="radio"]').length })
+    if (radio) { radio.click(); await sleep(250) }
+    const rows = qa('.map-list .item').map(e => ({
+      text: e.textContent.trim().slice(0, 30),
+      dir: e.classList.contains('dir'),
+      indent: parseInt(e.style.paddingLeft || '10', 10)
+    }))
+    linkResult = { rowCount: rows.length, rows }
+    // 选中第一个脑图行并确定
+    const mapRow = qa('.map-list .item').find(e => !e.classList.contains('dir'))
+    if (mapRow) {
+      mapRow.click()
+      await sleep(100)
+      clickBtnInModal('确定')
+      await sleep(600)
+      const node = window.__cmindMap.renderer.activeNodeList[0]
+      linkResult.hyperlink = node ? node.getData('hyperlink') : null
+    }
+  }
+  log('link-dialog-tree', linkResult)
+
+  // ---------- 4. Git：提交 → 分支 → 切回 → 推送 ----------
+  let gitResult = {}
+  try {
+    const st1 = await window.cmind.invoke('git:status')
+    gitResult.statusBeforeCommit = { branch: st1.branch, branches: st1.branches, tracking: st1.tracking }
+    await window.cmind.invoke('git:commit', 'uitest: 提交脑图文件')
+    const cb = await window.cmind.invoke('git:createBranch', 'uitest-branch')
+    gitResult.createBranch = cb
+    const br = await window.cmind.invoke('git:branches')
+    gitResult.branches = br
+    await window.cmind.invoke('git:checkout', 'main')
+    const st2 = await window.cmind.invoke('git:status')
+    gitResult.branchAfterCheckout = st2.branch
+    const logLines = await window.cmind.invoke('git:log')
+    gitResult.logTop = logLines[0] ? logLines[0].message : null
+    try {
+      await window.cmind.invoke('git:push')
+      gitResult.push = 'ok'
+    } catch (e) {
+      gitResult.push = 'failed: ' + String(e.message || e)
+    }
+  } catch (e) {
+    gitResult.error = String(e.message || e)
+  }
+  log('git-flow', gitResult)
 
   return out
 }

@@ -241,13 +241,26 @@ function openImageDialog() {
 }
 function openLinkDialog() {
   if (!requireNode()) return
-  dialog.value = { mode: 'link', linkType: 'web', webUrl: '', webTitle: '', maps: [], selMap: null }
-  api('fs:listMaps').then(maps => {
-    if (dialog.value && dialog.value.mode === 'link') {
-      dialog.value.maps = maps.filter(m => m.path !== props.tab.path)
-    }
-  })
+  dialog.value = { mode: 'link', linkType: 'web', webUrl: '', webTitle: '', selMap: null }
 }
+
+/* 脑图链接候选列表：按工作区目录结构层级展开（文件夹作为分组，不可选） */
+const linkRows = computed(() => {
+  if (!dialog.value || dialog.value.mode !== 'link') return []
+  const rows = []
+  const walk = (list, depth) => {
+    for (const n of list) {
+      if (n.type === 'dir') {
+        rows.push({ type: 'dir', name: n.name, depth })
+        walk(n.children || [], depth + 1)
+      } else if (n.isMap && n.path !== props.tab.path) {
+        rows.push({ type: 'map', name: n.name.replace(/\.cmind$/, ''), rel: n.rel, path: n.path, depth })
+      }
+    }
+  }
+  walk(store.tree, 0)
+  return rows
+})
 function openNoteDialog() {
   if (!requireNode()) return
   dialog.value = { mode: 'note', note: activeNode()?.getData('note') || '' }
@@ -276,7 +289,14 @@ async function applyDialog() {
     if (d.mode === 'image') {
       const url = d.dataUrl || d.imgUrl.trim()
       if (!url) { toast('请选择本地图片或填写图片地址', 'error'); return }
-      exec('SET_NODE_IMAGE', node, { url, title: d.fileName || '' })
+      const size = await probeImageSize(url)
+      let width = 200, height = 100
+      if (size) {
+        const r = Math.min(200 / size.w, 100 / size.h, 1)
+        width = Math.max(1, Math.round(size.w * r))
+        height = Math.max(1, Math.round(size.h * r))
+      }
+      exec('SET_NODE_IMAGE', node, { url, title: d.fileName || '', width, height })
     } else if (d.mode === 'link') {
       if (d.linkType === 'web') {
         const url = d.webUrl.trim()
@@ -295,6 +315,16 @@ async function applyDialog() {
   } catch (err) {
     toast('设置失败：' + (err.message || err), 'error')
   }
+}
+
+/* 读取图片原始尺寸，按主题上限（200x100）等比缩放 */
+function probeImageSize(url) {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => resolve({ w: img.naturalWidth || 200, h: img.naturalHeight || 100 })
+    img.onerror = () => resolve(null)
+    img.src = url
+  })
 }
 
 /* 清除所选节点的图片/链接/备注 */
@@ -391,11 +421,15 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
           <div v-else style="margin-top:10px">
             <div class="map-list">
               <div
-                v-for="m in dialog.maps" :key="m.path"
-                class="item" :class="{ sel: dialog.selMap && dialog.selMap.path === m.path }"
-                @click="dialog.selMap = m"
-              >🧠 {{ m.name.replace('.cmind','') }} <span class="rel">{{ m.rel }}</span></div>
-              <div v-if="!dialog.maps.length" class="hint" style="padding:10px">
+                v-for="(r, i) in linkRows" :key="i"
+                class="item" :class="{ sel: r.type === 'map' && dialog.selMap && dialog.selMap.path === r.path, dir: r.type === 'dir' }"
+                :style="{ paddingLeft: 10 + r.depth * 16 + 'px' }"
+                @click="r.type === 'map' && (dialog.selMap = r)"
+              >
+                <span v-if="r.type === 'dir'">📁 <b>{{ r.name }}</b></span>
+                <span v-else>🧠 {{ r.name }} <span class="rel">{{ r.rel }}</span></span>
+              </div>
+              <div v-if="!linkRows.some(r => r.type === 'map')" class="hint" style="padding:10px">
                 工作区里还没有其它脑图文件
               </div>
             </div>

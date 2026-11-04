@@ -13,6 +13,7 @@ export const store = reactive({
 
   tabs: [],
   activeId: null,
+  currentDir: '', // 当前操作的文件夹（新建脑图/文件夹的默认位置）
 
   gitOpen: false,
 
@@ -71,6 +72,7 @@ export async function chooseWorkspace() {
   if (!dir) return false
   store.workspace = await api('workspace:set', dir)
   store.needWorkspace = false
+  store.currentDir = store.workspace
   await refreshTree()
   toast('工作区已设置：' + store.workspace)
   return true
@@ -97,6 +99,8 @@ export function activeTab() {
 }
 
 export async function openMap(absPath, focus = true) {
+  // 当前操作目录 = 所打开脑图所在文件夹
+  store.currentDir = absPath.slice(0, absPath.lastIndexOf('/')) || store.workspace
   const existing = store.tabs.find(t => t.path === absPath)
   if (existing) {
     if (focus) store.activeId = existing.id
@@ -149,13 +153,6 @@ export async function createMap(dirPath, name) {
 export async function createDir(dirPath, name) {
   await api('fs:createDir', dirPath, name)
   await refreshTree()
-}
-
-/** 新建普通文件（保留扩展名，空内容） */
-export async function createRawFile(dirPath, name) {
-  const abs = await api('fs:createRaw', dirPath, name, '')
-  await refreshTree()
-  return abs
 }
 
 /** 用系统默认程序打开普通文件 */
@@ -265,10 +262,18 @@ export async function initStore() {
   store.config = cfg
   if (cfg.workspaceDir) {
     store.workspace = cfg.workspaceDir
+    store.currentDir = store.workspace
     await refreshTree()
   } else {
     store.needWorkspace = true
   }
+}
+
+/** 展示用目录名 */
+export function dirLabel(absDir) {
+  const ws = store.workspace.replace(/\/+$/, '')
+  if (!absDir || absDir === ws) return '根目录'
+  return absDir.slice(ws.length + 1) || '根目录'
 }
 
 /* ---------- 收集所有文件夹（用于移动对话框） ---------- */
