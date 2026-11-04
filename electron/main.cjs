@@ -8,6 +8,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const fsp = require('node:fs/promises')
+const AdmZip = require('adm-zip')
 
 // 开发（未打包）时把 userData 放到项目内，避免污染系统目录，也便于冒烟测试
 if (!app.isPackaged) {
@@ -144,14 +145,19 @@ function registerFsIpc() {
   ]
   ipcMain.handle('import:open', async () => {
     const cfg = loadConfig()
-    const res = await dialog.showOpenDialog(mainWindow, {
-      title: '导入脑图文件',
-      defaultPath: cfg.workspaceDir || undefined,
-      properties: ['openFile'],
-      filters: IMPORT_FILTERS
-    })
-    if (res.canceled || !res.filePaths.length) return null
-    const abs = res.filePaths[0]
+    let abs
+    if (process.env.CMIND_IMPORT_FILE) {
+      abs = process.env.CMIND_IMPORT_FILE
+    } else {
+      const res = await dialog.showOpenDialog(mainWindow, {
+        title: '导入脑图文件',
+        defaultPath: cfg.workspaceDir || undefined,
+        properties: ['openFile'],
+        filters: IMPORT_FILTERS
+      })
+      if (res.canceled || !res.filePaths.length) return null
+      abs = res.filePaths[0]
+    }
     const name = path.basename(abs).replace(/\.[^.]+$/, '')
     const ext = (abs.match(/\.([^.]+)$/) || [, ''])[1].toLowerCase()
 

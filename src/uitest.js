@@ -67,6 +67,24 @@ window.__cmindUITest = async function (mode) {
     } catch (e) { log('export-menu', { error: String(e && e.message || e) }) }
     return out
   }
+  if (mode === 'importtest') {
+    const out = { steps: [] }
+    const log = (name, data) => out.steps.push({ name, ...data })
+    try {
+      const res = await window.cmind.invoke('import:open')
+      log('import-open', { kind: res && res.kind, sub: res && res.sub, textLen: res ? String(res.text || '').length : 0 })
+      const fm = await import('./formats.js')
+      const tree = fm.parseImportText(res.kind, res.text)
+      log('import-parse', {
+        root: (tree.data || {}).text,
+        children: (tree.children || []).map(c => (c.data || {}).text).slice(0, 6),
+        total: (tree.children || []).reduce((n, c) => n + 1 + (c.children || []).length, 0)
+      })
+    } catch (e) {
+      log('import-fail', { error: String(e && e.message || e) })
+    }
+    return out
+  }
   if (mode === 'focus') {
     // ---- 专项验证：真实拖拽放大 / 画布放大 / 树排序 / 换行 ----
     const S = window.__cmindStore
