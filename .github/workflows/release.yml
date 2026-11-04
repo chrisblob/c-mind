@@ -50,10 +50,20 @@ jobs:
         shell: bash
       - run: pnpm rebuild electron esbuild
         shell: bash
-      - run: pnpm build
+      - name: Enable Windows long paths
+        shell: pwsh
+        run: |
+          Set-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem -Name LongPathsEnabled -Value 1
+          git config --system core.longpaths true
+      - name: Build Windows packages
         shell: bash
-      - run: pnpm exec electron-builder --win --x64
-        shell: bash
+        run: |
+          set -o pipefail
+          DEBUG=electron-builder pnpm exec electron-builder --win --x64 2>&1 | tee win-build.log || {
+            echo "BUILD FAILED, last lines:"
+            tail -n 14 win-build.log | cut -c1-900 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          }
       - name: Upload release assets (gh CLI)
         env:
           GH_TOKEN: ${{ github.token }}
