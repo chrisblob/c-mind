@@ -135,6 +135,65 @@ function registerFsIpc() {
     await fsp.writeFile(abs, content, 'utf-8')
     return true
   })
+  /* ---------- 导入 / 导出 ---------- */
+  const IMPORT_FILTERS = [
+    { name: '脑图文件', extensions: ['cmind', 'xmind', 'mm', 'opml', 'md', 'markdown', 'json', 'txt'] },
+    { name: '所有文件', extensions: ['*'] }
+  ]
+  ipcMain.handle('import:open', async () => {
+    const cfg = loadConfig()
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: '导入脑图文件',
+      defaultPath: cfg.workspaceDir || undefined,
+      properties: ['openFile'],
+      filters: IMPORT_FILTERS
+    })
+    if (res.canceled || !res.filePaths.length) return null
+    const abs = res.filePaths[0]
+    const name = path.basename(abs).replace(/\.[^.]+$/, '')
+    const ext = (abs.match(/\.([^.]+)$/) || [, ''])[1].toLowerCase()
+
+    if (ext === 'xmind') {
+      // .xmind 是 zip 包：优先新版 content.json，回退旧版 content.xml
+      const zip = new AdmZip(abs)
+      const entries = zip.getEntries()
+      const jsonEntry = entries.find(e => e.entryName === 'content.json')
+        || entries.find(e => e.entryName.endsWith('/content.json'))
+      if (jsonEntry) {
+        return { path: abs, name, ext, kind: 'xmind', sub: 'json', text: jsonEntry.getData().toString('utf-8') }
+      }
+      const xmlEntry = entries.find(e => e.entryName === 'content.xml')
+        || entries.find(e => e.entryName.endsWith('/content.xml'))
+      if (xmlEntry) {
+        return { path: abs, name, ext, kind: 'xmind', sub: 'xml', text: xmlEntry.getData().toString('utf-8') }
+      }
+      throw new Error('该 .xmind 文件中未找到 content.json / content.xml')
+    }
+
+    if (ext === 'cmind' || ext === 'json' || ext === 'mm' || ext === 'opml' || ext === 'md' || ext === 'markdown' || ext === 'txt') {
+      const text = await fsp.readFile(abs, 'utf-8')
+      return { path: abs, name, ext, kind: ext === 'cmind' ? 'json' : (ext === 'txt' ? 'markdown' : ext), text }
+    }
+    throw new Error('暂不支持该格式的导入：.' + ext)
+  })
+
+  ipcMain.handle('export:save', async (_e, { defaultName, filters, content }) => {
+    const cfg = loadConfig()
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: '导出脑图',
+      defaultPath: path.join(cfg.workspaceDir || app.getPath('documents'), String(defaultName || '导图')),
+      filters: filters || [{ name: '所有文件', extensions: ['*'] }]
+    })
+    if (res.canceled || !res.filePath) return null
+    const abs = res.filePath
+    if (content && typeof content === 'object' && content.base64 !== undefined) {
+      await fsp.writeFile(abs, Buffer.from(content.base64, 'base64'))
+    } else {
+      await fsp.writeFile(abs, String(content == null ? '' : content), 'utf-8')
+    }
+    return abs
+  })
+
   ipcMain.handle('fs:createFile', async (_e, dir, rawName, content = '') => {
     const d = safePath(dir)
     let name = String(rawName || '').trim()

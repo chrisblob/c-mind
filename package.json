@@ -16,6 +16,7 @@
     "dist": "vite build && electron-builder --mac"
   },
   "dependencies": {
+    "adm-zip": "^0.6.1",
     "simple-git": "^4.0.2",
     "simple-mind-map": "0.14.0-fix.3",
     "vue": "^3.5.44"

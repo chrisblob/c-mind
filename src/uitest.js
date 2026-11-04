@@ -1,7 +1,8 @@
 /**
  * UI 自动化走查脚本（仅在 CMIND_UITEST=1 时由主进程注入执行）
- * 覆盖：当前目录新建、图片插入渲染、脑图链接树形选择、git 绑定/分支/提交
+ * 覆盖：当前目录新建、图片插入渲染、脑图链接树形选择、多格式导入/导出转换、git 绑定/分支/提交
  */
+import { parseImportText, buildFreeMind, buildOpml, buildMarkdown, extToKind } from './formats.js'
 window.__cmindUITest = async function () {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
   const S = window.__cmindStore
@@ -93,6 +94,61 @@ window.__cmindUITest = async function () {
     }
   }
   log('insert-image', imgResult)
+
+  // ---------- 2b. 多格式导入解析（单元级） ----------
+  const fmt = {}
+  try {
+    const xmindJson = JSON.stringify([{ rootTopic: { title: '中心', children: { attached: [
+      { title: 'A', children: { attached: [{ title: 'A1' }] } },
+      { title: 'B' }
+    ] } } }])
+    const r1 = parseImportText('xmind', xmindJson)
+    fmt['xmind-json'] = { root: r1.data.text, children: r1.children.map(c => c.data.text + (c.children[0] ? '/' + c.children[0].data.text : '')) }
+
+    const xmindXml = '<sheet><topic><title>旧版中心</title><children><topics type="attached"><topic><title>X</title></topic><topic><title>Y</title></topic></topics></children></topic></sheet>'
+    const r2 = parseImportText('xmind', xmindXml)
+    fmt['xmind-xml'] = { root: r2.data.text, children: r2.children.map(c => c.data.text) }
+
+    const mmText = '<map version="1.0.1"><node TEXT="根"><node TEXT="子一"><node TEXT="孙"/></node><node TEXT="子二"/></node></map>'
+    const r3 = parseImportText('freemind', mmText)
+    fmt['freemind'] = { root: r3.data.text, children: r3.children.map(c => c.data.text + (c.children[0] ? '/' + c.children[0].data.text : '')) }
+
+    const opmlText = '<opml version="2.0"><head><title>t</title></head><body><outline text="总"><outline text="甲"/><outline text="乙"/></outline></body></opml>'
+    const r4 = parseImportText('opml', opmlText)
+    fmt['opml'] = { root: r4.data.text, children: r4.children.map(c => c.data.text) }
+
+    const mdText = '# 主标题\n## 小节\n- 要点1\n  - 细节\n- 要点2\n1. 第一\n'
+    const r5 = parseImportText('markdown', mdText)
+    fmt['markdown'] = { root: r5.data.text, sections: r5.children.map(c => c.data.text), bullets: r5.children[0].children.map(c => c.data.text + '>' + c.children.map(x => x.data.text).join('|')) }
+
+    const r6 = parseImportText('json', JSON.stringify({ format: 'c-mind', version: 1, root: { data: { text: '文档根' }, children: [{ data: { text: 'c' }, children: [] }] } }))
+    fmt['cmind-json'] = { root: r6.data.text, children: r6.children.map(c => c.data.text) }
+
+    fmt.extMap = { xmind: extToKind('XMIND'), mm: extToKind('.mm'), opml: extToKind('opml'), md: extToKind('md') }
+
+    // 导出构建
+    const sample = { data: { text: '根' }, children: [{ data: { text: '甲' }, children: [{ data: { text: '甲一' }, children: [] }] }, { data: { text: '乙' }, children: [] }] }
+    fmt['export-mm'] = buildFreeMind(sample).includes('<node TEXT="甲">')
+    fmt['export-opml'] = buildOpml(sample).includes('<outline text="甲一">')
+    fmt['export-md'] = buildMarkdown(sample).split('\n').slice(1).join('|')
+  } catch (e) {
+    fmt.error = String(e.message || e)
+  }
+  log('format-converters', fmt)
+
+  // ---------- 2c. 导入插入路径（界面级，模拟选好文件后的行为） ----------
+  let importFlow = { skipped: true }
+  try {
+    const M = window.__cmindMap
+    const parsed = parseImportText('markdown', '# 导入的根\n- 分支一\n- 分支二\n')
+    M.renderer.root.active()
+    await sleep(150)
+    M.execCommand('INSERT_CHILD_NODE', false, [M.renderer.root], { ...parsed.data }, parsed.children)
+    await sleep(800)
+    const rootData = M.getData()
+    importFlow = { rootText: rootData.data.text, childTexts: rootData.children.map(c => c.data.text) }
+  } catch (e) { importFlow = { error: String(e.message || e) } }
+  log('import-insert-flow', importFlow)
 
   // ---------- 3. 脑图链接弹框：按目录层级展示 ----------
   const linkBtn = qa('.toolbar button').find(b => b.title && b.title.includes('插入链接'))

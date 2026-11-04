@@ -3,7 +3,7 @@
  * 脑图编辑器：基于 simple-mind-map
  * - Xmind 兼容快捷键（库内置：Tab/Enter/Shift+Tab/Del/Cmd+Z/Cmd+C…）
  * - 节点嵌入图片 / 网页链接 / 其他脑图链接（cmind://）
- * - 主题预设、布局切换、缩放适配、导出 PNG/SVG/XMind/JSON、只读查看模式
+ * - 主题预设、布局切换、缩放适配、导出 PNG/SVG/XMind/JSON/FreeMind/OPML/Markdown、导入 XMind/FreeMind/OPML/Markdown/JSON、只读查看模式
  * - 自动保存 + ⌘S 手动保存
  */
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
@@ -17,6 +17,9 @@ import KeyboardNavigation from 'simple-mind-map/src/plugins/KeyboardNavigation.j
 import {
   store, api, toast, uiContextMenu, MIND_EXT, syncRenameMap, sanitizeFileName
 } from '../store.js'
+import {
+  extToKind, parseImportText, buildFreeMind, buildOpml, buildMarkdown, dataUrlToBase64
+} from '../formats.js'
 
 // 插件只需注册一次
 if (!MindMap.__cmindPlugins) {
@@ -220,17 +223,83 @@ function exportMenu(e) {
   uiContextMenu(rect.left, rect.bottom + 4, [
     { label: 'PNG 图片', action: () => doExport('png') },
     { label: 'SVG 矢量图', action: () => doExport('svg') },
-    { label: 'XMind 文件', action: () => doExport('xmind') },
+    { type: 'sep' },
+    { label: 'XMind 文件（可导入 XMind）', action: () => doExport('xmind') },
+    { label: 'FreeMind 文件 .mm（可导入 FreeMind / Xmind）', action: () => doExportInterop('freemind') },
+    { label: 'OPML 大纲（可导入幕布 / Workflowy）', action: () => doExportInterop('opml') },
+    { label: 'Markdown 大纲 .md', action: () => doExportInterop('markdown') },
     { label: 'JSON 数据', action: () => doExport('json') }
   ])
 }
+
+/* 内置导出：png / svg / xmind / json（simple-mind-map 提供），保存到指定位置 */
 async function doExport(type) {
   try {
+    const extMap = { png: 'png', svg: 'svg', xmind: 'xmind', json: 'json' }
     toast('正在导出 ' + type.toUpperCase() + ' …')
-    await mindMap.export(type, true, props.tab.name)
-    toast('导出完成（已在下载弹窗中选择位置）', 'ok')
+    let data = await mindMap.export(type, false, props.tab.name)
+    let content
+    if (typeof data === 'string' && data.startsWith('data:')) {
+      content = { base64: (dataUrlToBase64(data) || {}).base64 || '' }
+    } else {
+      content = String(data)
+    }
+    const saved = await api('export:save', {
+      defaultName: props.tab.name + '.' + extMap[type],
+      filters: [{ name: type.toUpperCase(), extensions: [extMap[type]] }],
+      content
+    })
+    if (saved) toast('已导出：' + saved, 'ok')
   } catch (err) {
     toast('导出失败：' + (err.message || err), 'error')
+  }
+}
+
+/* 互操作导出：FreeMind / OPML / Markdown（由数据树构建，其他平台可直接导入） */
+async function doExportInterop(kind) {
+  try {
+    const root = mindMap.getData()
+    let content, ext, label
+    if (kind === 'freemind') { content = buildFreeMind(root); ext = 'mm'; label = 'FreeMind' }
+    else if (kind === 'opml') { content = buildOpml(root); ext = 'opml'; label = 'OPML' }
+    else { content = buildMarkdown(root); ext = 'md'; label = 'Markdown' }
+    const saved = await api('export:save', {
+      defaultName: props.tab.name + '.' + ext,
+      filters: [{ name: label, extensions: [ext] }],
+      content
+    })
+    if (saved) toast('已导出：' + saved, 'ok')
+  } catch (err) {
+    toast('导出失败：' + (err.message || err), 'error')
+  }
+}
+
+/* ---------- 导入：XMind / FreeMind / OPML / Markdown / JSON ---------- */
+async function doImport() {
+  try {
+    const res = await api('import:open')
+    if (!res) return
+    const tree = parseImportText(res.kind, res.text)
+    const gd = mindMap.getData() // 节点树本身：{ data, children }
+    const isEmptyMap = !props.tab.dirty && !(gd.children && gd.children.length)
+    if (isEmptyMap) {
+      // 空白脑图 → 导入内容直接作为整张图（文件名保持不变，不触发改名同步）
+      mindMap.setData(tree)
+      mindMap.render()
+      rootTextAtLoad = tree.data.text || ''
+      saveNow()
+      toast(`已导入「${res.name}」（${String(res.ext).toUpperCase()}）为当前脑图`, 'ok')
+    } else {
+      // 追加为当前选中节点（未选中则为根节点）的子树
+      const target = mindMap.renderer.activeNodeList[0] || mindMap.renderer.root
+      mindMap.execCommand(
+        'INSERT_CHILD_NODE', false, [target],
+        { ...tree.data }, tree.children || []
+      )
+      toast(`已导入「${res.name}」为「${(target.getData('text') || '').slice(0, 12)}」的子树`, 'ok')
+    }
+  } catch (err) {
+    toast('导入失败：' + (err.message || err), 'error')
   }
 }
 
@@ -352,6 +421,7 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
       <button class="icon-btn" title="添加上级节点 (⇧Tab)" @click="addParent">＋上级</button>
       <button class="icon-btn" title="删除节点 (⌫)" @click="removeNode">🗑</button>
       <div class="sep"></div>
+      <button class="icon-btn" title="导入（XMind / FreeMind / OPML / Markdown / JSON）" @click="doImport">📥</button>
       <button class="icon-btn" title="插入图片" @click="openImageDialog">🖼</button>
       <button class="icon-btn" title="插入链接（网页/其他脑图）" @click="openLinkDialog">🔗</button>
       <button class="icon-btn" title="插入备注" @click="openNoteDialog">📝</button>
