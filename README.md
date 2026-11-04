@@ -44,7 +44,7 @@
 | 节点嵌图片 | 本地图片以 base64 内嵌（随文件走），或填网络图片地址；画布内仅显示缩略图（≤200×100，保证版面美观），点击节点中的图片（或工具栏 🔍 / 右键「查看图片大图」）可在弹窗中放大/缩小查看（支持 ＋/－ 按钮、滚轮、拖动平移、适合窗口、100%） |
 | 节点内换行 | 编辑节点时按 **Shift+Enter** 在节点内换行（Enter 为保存并新建同级节点） |
 | 侧栏排序 | 新建的脑图/文件夹显示在最上面（按创建时间倒序） |
-| 导入 | XMind（.xmind 新/旧版）、FreeMind/Freeplane（.mm）、OPML 大纲（幕布/Workflowy 等）、Markdown 大纲（.md）、JSON/.cmind；空图整体导入，非空图追加为子树 |
+| 导入 | XMind（.xmind 新/旧版）、FreeMind/Freeplane（.mm）、OPML 大纲（幕布/Workflowy 等）、Markdown 大纲（.md）、JSON/.cmind；空图整体导入，非空图追加为子树。XMind 内嵌图片自动转为 base64 随文件保存，节点链接（网页 / cmind:// 脑图链接）一并导入 |
 | 空白清理 | 带图片/链接的节点会自动清理多余空白字符（导入的 `\n` 空标题等） |
 | 导出 | XMind（.xmind）、FreeMind（.mm）、OPML、Markdown（.md）、JSON、PNG、SVG —— 均可被对应平台导入 |
 | 脑图之间跳转 | 🔗 → 脑图链接，选择工作区里任意一张 `.cmind`；点击后**在新标签页打开** |

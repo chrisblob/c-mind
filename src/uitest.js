@@ -80,6 +80,28 @@ window.__cmindUITest = async function (mode) {
         children: (tree.children || []).map(c => (c.data || {}).text).slice(0, 6),
         total: (tree.children || []).reduce((n, c) => n + 1 + (c.children || []).length, 0)
       })
+      // 端到端：插入当前脑图并读回，验证图片/链接真正落到节点上
+      const row = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes('产品路线图'))
+      if (row) row.click()
+      await new Promise(r => setTimeout(r, 2600))
+      const M = window.__cmindMap
+      if (!M) { log('insert', { error: 'no map' }); return out }
+      const target = M.renderer.root
+      M.execCommand('INSERT_CHILD_NODE', false, [target], { ...tree.data }, tree.children || [])
+      await new Promise(r => setTimeout(r, 800))
+      const flat = []
+      ;(function w(n) { flat.push(n); (n.children || []).forEach(w) })(M.getData())
+      const imgs = flat.filter(n => n.data && n.data.image)
+      const links = flat.filter(n => n.data && n.data.hyperlink)
+      log('insert-check', {
+        imageNodes: imgs.map(n => ({ url: String(n.data.image.url).slice(0, 30), w: n.data.image.width, h: n.data.image.height })),
+        linkNodes: links.map(n => String(n.data.hyperlink).slice(0, 46))
+      })
+      // 落盘校验
+      await new Promise(r => setTimeout(r, 600))
+      const tabPath = window.__cmindStore.tabs.find(t => t.id === window.__cmindStore.activeId).path
+      const raw = String(await window.cmind.invoke('fs:read', tabPath))
+      log('saved-check', { hasDataURL: raw.includes('data:image/'), hasCmindLink: raw.includes('cmind://') })
     } catch (e) {
       log('import-fail', { error: String(e && e.message || e) })
     }

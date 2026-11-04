@@ -165,15 +165,31 @@ function registerFsIpc() {
       // .xmind 是 zip 包：优先新版 content.json，回退旧版 content.xml
       const zip = new AdmZip(abs)
       const entries = zip.getEntries()
+      // 内嵌图片 → dataURL（正文里的 xap:resources/... 引用原样替换，图片随 .cmind 保存）
+      const IMG_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp' }
+      const resourceMap = {}
+      for (const e of entries) {
+        if (e.isDirectory) continue
+        if (!/^resources\//i.test(e.entryName) && !/^attachments\//i.test(e.entryName)) continue
+        const base = e.entryName.split('/').pop().toLowerCase()
+        const extm = (base.match(/\.([a-z0-9]+)$/) || [])[1] || ''
+        const mime = IMG_MIME[extm]
+        if (!mime) continue
+        try { resourceMap[base] = `data:${mime};base64,${e.getData().toString('base64')}` } catch (_) { /* 忽略损坏资源 */ }
+      }
+      const swapResources = (t) => t.replace(/xap:([^"'\s<>)]+)/g, (m, p1) => {
+        const base = decodeURIComponent(p1).split('/').pop().toLowerCase()
+        return resourceMap[base] || m
+      })
       const jsonEntry = entries.find(e => e.entryName === 'content.json')
         || entries.find(e => e.entryName.endsWith('/content.json'))
       if (jsonEntry) {
-        return { path: abs, name, ext, kind: 'xmind', sub: 'json', text: jsonEntry.getData().toString('utf-8') }
+        return { path: abs, name, ext, kind: 'xmind', sub: 'json', text: swapResources(jsonEntry.getData().toString('utf-8')) }
       }
       const xmlEntry = entries.find(e => e.entryName === 'content.xml')
         || entries.find(e => e.entryName.endsWith('/content.xml'))
       if (xmlEntry) {
-        return { path: abs, name, ext, kind: 'xmind', sub: 'xml', text: xmlEntry.getData().toString('utf-8') }
+        return { path: abs, name, ext, kind: 'xmind', sub: 'xml', text: swapResources(xmlEntry.getData().toString('utf-8')) }
       }
       throw new Error('该 .xmind 文件中未找到 content.json / content.xml')
     }

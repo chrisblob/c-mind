@@ -34,7 +34,9 @@ export function parseImportText(kind, text) {
 }
 
 // 空标题给默认文案，避免导入后出现极小的“不可操作”节点
-const node = (text, children = []) => ({ data: { text: String(text == null ? '' : text).trim() || '子主题' }, children })
+const node = (text, children = [], extra = {}) => ({ data: { text: String(text == null ? '' : text).trim() || '子主题', ...extra }, children })
+const okSrc = (u) => /^(data:|https?:)/.test(String(u || ''))
+const okHref = (u) => { const h = String(u || ''); return /^https?:\/\//.test(h) || h.startsWith('cmind://') }
 
 /* C-Mind / simple-mind-map / 任意含 root 或 data 的 JSON */
 export function parseJsonAny(text) {
@@ -76,7 +78,12 @@ function xmindTopicJson(t) {
   const children = []
   const att = (t.children && t.children.attached) || []
   for (const c of att) children.push(xmindTopicJson(c))
-  return node(t.title || '', children)
+  const extra = {}
+  if (t.image && okSrc(t.image.src)) {
+    extra.image = { url: t.image.src, width: t.image.width, height: t.image.height, custom: false }
+  }
+  if (okHref(t.href)) extra.hyperlink = t.href
+  return node(t.title || '', children, extra)
 }
 
 /* XMind 旧版 content.xml：<topic><title>..</title><children><topics><topic> */
@@ -97,7 +104,16 @@ function xmindTopicXml(el) {
       children.push(xmindTopicXml(t))
     }
   }
-  return node(titleEl ? titleEl.textContent : '', children)
+  const extra = {}
+  const imgEl = el.querySelector(':scope > img')
+  if (imgEl) {
+    const src = imgEl.getAttributeNS('http://www.w3.org/1999/xhtml', 'src')
+      || imgEl.getAttribute('xhtml:src') || imgEl.getAttribute('src')
+    if (okSrc(src)) extra.image = { url: src, custom: false }
+  }
+  const href = el.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+  if (okHref(href)) extra.hyperlink = href
+  return node(titleEl ? titleEl.textContent : '', children, extra)
 }
 
 /* FreeMind / Freeplane：<map><node TEXT="..."><node .../></node></map> */
