@@ -6,8 +6,8 @@
 import { store, activeTab, closeTab, createMap, uiPrompt } from '../store.js'
 
 async function onAdd() {
-  const name = await uiPrompt('新建脑图', '名称', '未命名', '例如：产品规划')
-  if (name === null) return
+  const name = await uiPrompt('新建脑图', '名称（将作为根节点与文件名）', '', '例如：产品规划', true)
+  if (!name) return
   await createMap(store.workspace, name)
 }
 </script>

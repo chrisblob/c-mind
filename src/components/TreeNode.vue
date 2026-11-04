@@ -1,11 +1,12 @@
 <script setup>
 /**
  * 文件树节点（递归组件）
+ * 目录节点 / 脑图文件 / 普通文件，均支持右键新建、重命名、移动、删除
  */
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import {
-  store, api, openMap, createMap, createDir, renamePath, movePath,
-  deletePath, uiPrompt, uiContextMenu, collectDirs, toast
+  store, api, openMap, createMap, createDir, createRawFile, openRawFile,
+  renamePath, movePath, deletePath, uiPrompt, uiContextMenu, collectDirs, toast
 } from '../store.js'
 
 const props = defineProps({
@@ -17,6 +18,9 @@ const expanded = ref(props.depth === 0)
 const dropTarget = ref(false)
 
 const isActive = () => store.tabs.some(t => t.path === props.node.path && t.id === store.activeId)
+const parentDir = computed(() =>
+  props.node.type === 'dir' ? props.node.path : props.node.path.slice(0, props.node.path.lastIndexOf('/'))
+)
 
 function onClick() {
   if (props.node.type === 'dir') {
@@ -24,12 +28,37 @@ function onClick() {
   } else if (props.node.isMap) {
     openMap(props.node.path)
   } else {
-    toast('仅支持打开 .cmind 脑图文件（其它文件可在 Finder 中显示）')
+    openRawFile(props.node.path)
   }
 }
 
+/* ---------- 新建（可用于当前目录 / 当前文件的同级目录） ---------- */
+async function newMapIn(dir) {
+  const name = await uiPrompt(`新建脑图（${nameOf(dir)}）`, '名称（将作为根节点与文件名）', '', '例如：产品规划', true)
+  if (!name) return
+  const abs = await createMap(dir, name)
+  if (dir !== props.node.path) toast('已创建：' + abs.split('/').pop(), 'ok')
+  if (props.node.type === 'dir') expanded.value = true
+}
+async function newFolderIn(dir) {
+  const name = await uiPrompt(`新建文件夹（${nameOf(dir)}）`, '文件夹名称', '', '例如：项目资料', true)
+  if (!name) return
+  await createDir(dir, name)
+  if (props.node.type === 'dir') expanded.value = true
+}
+async function newFileIn(dir) {
+  const name = await uiPrompt(`新建文件（${nameOf(dir)}）`, '文件名（含扩展名）', '', '例如：notes.md', true)
+  if (!name) return
+  await createRawFile(dir, name)
+  if (props.node.type === 'dir') expanded.value = true
+}
+function nameOf(dir) {
+  const ws = store.workspace.replace(/\/+$/, '')
+  return dir === ws ? '根目录' : dir.split('/').pop()
+}
+
 async function menuRename() {
-  const name = await uiPrompt('重命名', '新名称', props.node.name)
+  const name = await uiPrompt('重命名', '新名称', props.node.name, '', true)
   if (!name) return
   await renamePath(props.node.path, name)
 }
@@ -60,19 +89,20 @@ function confirmPick() {
 
 function menuItems() {
   const items = []
+  const target = parentDir.value
+  const createItems = [
+    { label: '＋ 新建脑图', action: () => newMapIn(target) },
+    { label: '＋ 新建文件夹', action: () => newFolderIn(target) },
+    { label: '＋ 新建文件', action: () => newFileIn(target) }
+  ]
+
   if (props.node.type === 'dir') {
-    items.push(
-      { label: '＋ 新建脑图', action: async () => {
-          const name = await uiPrompt('新建脑图（' + props.node.name + '）', '名称', '未命名')
-          if (name !== null) await createMap(props.node.path, name)
-        } },
-      { label: '＋ 新建文件夹', action: async () => {
-          const name = await uiPrompt('新建文件夹', '名称', '')
-          if (name) await createDir(props.node.path, name)
-        } }
-    )
-  } else if (props.node.isMap) {
-    items.push({ label: '打开', action: () => openMap(props.node.path) })
+    items.push(...createItems)
+  } else {
+    items.push({ label: props.node.isMap ? '打开脑图' : '用默认程序打开', action: onClick })
+    items.push({ label: '＋ 新建同级脑图', action: () => newMapIn(target) })
+    items.push({ label: '＋ 新建同级文件夹', action: () => newFolderIn(target) })
+    items.push({ label: '＋ 新建同级文件', action: () => newFileIn(target) })
   }
   items.push(
     { label: '重命名', action: menuRename },

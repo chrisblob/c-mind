@@ -9,7 +9,7 @@ import GitPanel from './components/GitPanel.vue'
 import MindMapEditor from './components/MindMapEditor.vue'
 import {
   store, api, initStore, chooseWorkspace, handleCmindLink, closeContextMenu,
-  activeTab, createMap, closeTab, uiPrompt
+  activeTab, createMap, closeTab, uiPrompt, toast
 } from './store.js'
 
 /* 让脚本/插件里 window.open 的调用也走统一分流：
@@ -24,13 +24,33 @@ function patchWindowOpen() {
 }
 
 async function createMapPrompt() {
-  const name = await uiPrompt('新建脑图', '名称', '未命名', '例如：产品规划')
+  const name = await uiPrompt('新建脑图', '名称（将作为根节点与文件名）', '', '例如：产品规划', true)
   if (name === null) return
   await createMap(store.workspace, name)
 }
 
+/* 弹框确定：必填项校验 */
+function submitPrompt() {
+  const p = store.prompt
+  if (!p) return
+  const v = String(p.value || '').trim()
+  if (p.required && !v) {
+    toast('请输入名称', 'error')
+    return
+  }
+  p.resolve(v)
+}
+function cancelPrompt() {
+  store.prompt && store.prompt.resolve(null)
+}
+
 /* 全局快捷键：Cmd+S 保存 / Cmd+N 新建脑图 / Cmd+W 关闭标签 */
 function onKeydown(e) {
+  if (e.key === 'Escape') {
+    if (store.prompt) { cancelPrompt(); return }
+    if (store.confirmBox) { store.confirmBox.resolve(false); return }
+    if (store.contextMenu) { closeContextMenu(); return }
+  }
   if (!(e.metaKey || e.ctrlKey)) return
   const key = e.key.toLowerCase()
   if (key === 's') {
@@ -88,22 +108,22 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 输入对话框 -->
-    <div v-if="store.prompt" class="overlay" @click.self="store.prompt.resolve(null)">
+    <div v-if="store.prompt" class="overlay" @click.self="cancelPrompt()">
       <div class="modal">
         <div class="modal-head">{{ store.prompt.title }}</div>
         <div class="modal-body">
           <div class="form-row">
-            <label>{{ store.prompt.label }}</label>
+            <label>{{ store.prompt.label }}<span v-if="store.prompt.required" style="color:var(--danger)"> *</span></label>
             <input
               type="text" v-model="store.prompt.value" :placeholder="store.prompt.placeholder"
               v-focus
-              @keydown.enter="store.prompt.resolve(store.prompt.value)"
+              @keydown.enter="submitPrompt"
             />
           </div>
         </div>
         <div class="modal-foot">
-          <button @click="store.prompt.resolve(null)">取消</button>
-          <button class="primary" @click="store.prompt.resolve(store.prompt.value)">确定</button>
+          <button @click="cancelPrompt()">取消</button>
+          <button class="primary" @click="submitPrompt">确定</button>
         </div>
       </div>
     </div>

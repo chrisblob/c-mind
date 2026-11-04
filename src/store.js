@@ -40,14 +40,22 @@ export function toast(text, type = 'info') {
 }
 
 /* ---------- UI 服务 ---------- */
-export function uiPrompt(title, label, value = '', placeholder = '') {
+export function uiPrompt(title, label, value = '', placeholder = '', required = false) {
   return new Promise(resolve => {
-    store.prompt = { title, label, value, placeholder, resolve }
+    const done = (v) => {
+      store.prompt = null
+      resolve(v)
+    }
+    store.prompt = { title, label, value, placeholder, required, resolve: done }
   })
 }
 export function uiConfirm(title, message, danger = false) {
   return new Promise(resolve => {
-    store.confirmBox = { title, message, danger, resolve }
+    const done = (v) => {
+      store.confirmBox = null
+      resolve(v)
+    }
+    store.confirmBox = { title, message, danger, resolve: done }
   })
 }
 export function uiContextMenu(x, y, items) {
@@ -143,44 +151,90 @@ export async function createDir(dirPath, name) {
   await refreshTree()
 }
 
+/** 新建普通文件（保留扩展名，空内容） */
+export async function createRawFile(dirPath, name) {
+  const abs = await api('fs:createRaw', dirPath, name, '')
+  await refreshTree()
+  return abs
+}
+
+/** 用系统默认程序打开普通文件 */
+export async function openRawFile(absPath) {
+  try {
+    await api('os:openItem', absPath)
+  } catch (e) {
+    toast('打开失败：' + (e.message || e), 'error')
+  }
+}
+
+/** 文件名中的非法字符替换 */
+export function sanitizeFileName(text) {
+  return String(text || '')
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+}
+
+/**
+ * 脑图根节点文本变化后，同步重命名磁盘文件
+ * @returns {Promise<boolean>} 是否发生了改名
+ */
+export async function syncRenameMap(tab, newBase) {
+  const base = sanitizeFileName(newBase)
+  if (!base || base === tab.name) return false
+  try {
+    const newPath = await api('fs:rename', tab.path, base + MIND_EXT)
+    tab.path = newPath
+    tab.rel = relOf(newPath)
+    tab.name = base
+    await refreshTree()
+    return true
+  } catch (e) {
+    toast('文件名同步失败：' + (e.message || e), 'error')
+    return false
+  }
+}
+
 export async function renamePath(p, newName) {
   let n = (newName || '').trim()
   if (!n) return
-  if (!p.endsWith(MIND_EXT) || n.endsWith(MIND_EXT)) {
-    // 保持扩展名一致
-  } else if (p.endsWith(MIND_EXT) && !n.endsWith(MIND_EXT)) {
-    n += MIND_EXT
-  }
-  await api('fs:rename', p, n)
-  await refreshTree()
-  // 同步已打开的标签
+  // 脑图文件保持 .cmind 扩展名
+  if (p.endsWith(MIND_EXT) && !n.endsWith(MIND_EXT)) n += MIND_EXT
   const oldPath = p
   const newPath = p.slice(0, p.lastIndexOf('/') + 1) + n
-  const tab = store.tabs.find(t => t.path === oldPath)
-  if (tab) {
-    tab.path = newPath
-    tab.rel = relOf(newPath)
-    tab.name = n.replace(new RegExp(MIND_EXT + '$'), '')
+  await api('fs:rename', oldPath, n)
+  await refreshTree()
+  syncTabsAfterPathChange(oldPath, newPath)
+}
+
+/** 文件/文件夹路径变化后，更新所有受影响标签页的路径信息 */
+function syncTabsAfterPathChange(oldPath, newPath) {
+  for (const t of store.tabs) {
+    if (t.path === oldPath) {
+      t.path = newPath
+      t.rel = relOf(newPath)
+      if (newPath.endsWith(MIND_EXT)) t.name = newPath.split('/').pop().replace(new RegExp(MIND_EXT + '$'), '')
+    } else if (t.path.startsWith(oldPath + '/')) {
+      t.path = newPath + t.path.slice(oldPath.length)
+      t.rel = relOf(t.path)
+    }
   }
 }
 
 export async function movePath(src, destDir) {
   const newPath = await api('fs:move', src, destDir)
   await refreshTree()
-  const tab = store.tabs.find(t => t.path === src)
-  if (tab) {
-    tab.path = newPath
-    tab.rel = relOf(newPath)
-    tab.name = newPath.split('/').pop().replace(new RegExp(MIND_EXT + '$'), '')
-  }
+  syncTabsAfterPathChange(src, newPath)
 }
 
 export async function deletePath(p, name) {
   const ok = await uiConfirm('删除', `确定将「${name}」移入废纸篓吗？`, true)
   if (!ok) return
   await api('fs:delete', p)
-  const tab = store.tabs.find(t => t.path === p)
-  if (tab) closeTab(tab.id)
+  // 关闭被删除文件（或其目录下所有文件）对应的标签
+  const affected = store.tabs.filter(t => t.path === p || t.path.startsWith(p + '/'))
+  affected.forEach(t => closeTab(t.id))
   await refreshTree()
 }
 

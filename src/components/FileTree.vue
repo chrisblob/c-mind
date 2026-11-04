@@ -3,21 +3,26 @@
  * 侧栏文件树：文件/文件夹管理模式
  * 支持：新建脑图/文件夹、重命名、移动（拖拽或菜单）、删除、更换工作区、Git 入口
  */
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import TreeNode from './TreeNode.vue'
-import { store, chooseWorkspace, createMap, createDir, uiPrompt } from '../store.js'
+import { store, chooseWorkspace, createMap, createDir, createRawFile, uiPrompt } from '../store.js'
 
 const wsName = computed(() => store.workspace.split('/').filter(Boolean).pop() || '未设置工作区')
 
 async function onNewMap() {
-  const name = await uiPrompt('新建脑图（根目录）', '名称', '未命名')
-  if (name === null) return
+  const name = await uiPrompt('新建脑图（根目录）', '名称（将作为根节点与文件名）', '', '例如：产品规划', true)
+  if (!name) return
   await createMap(store.workspace, name)
 }
 async function onNewFolder() {
-  const name = await uiPrompt('新建文件夹（根目录）', '名称', '')
+  const name = await uiPrompt('新建文件夹（根目录）', '文件夹名称', '', '例如：项目资料', true)
   if (!name) return
   await createDir(store.workspace, name)
+}
+async function onNewFile() {
+  const name = await uiPrompt('新建文件（根目录）', '文件名（含扩展名）', '', '例如：notes.md', true)
+  if (!name) return
+  await createRawFile(store.workspace, name)
 }
 </script>
 
@@ -51,14 +56,17 @@ async function onNewFolder() {
     <div class="filetree">
       <div v-if="!store.tree.length" class="tree-empty">
         <div>工作区还是空的</div>
-        <div>
-          <button class="primary" @click="onNewMap">＋ 新建第一张脑图</button>
+        <div style="display:flex; flex-direction:column; gap:6px; align-items:stretch">
+          <button class="primary" @click="onNewMap">＋ 新建脑图</button>
+          <button @click="onNewFolder">＋ 新建文件夹</button>
+          <button @click="onNewFile">＋ 新建文件</button>
         </div>
       </div>
       <TreeNode v-for="n in store.tree" :key="n.path" :node="n" :depth="0" />
-      <div v-if="store.tree.length" style="padding:10px 8px; display:flex; gap:6px">
-        <button style="flex:1" @click="onNewMap">＋ 脑图</button>
-        <button style="flex:1" @click="onNewFolder">＋ 文件夹</button>
+      <div v-if="store.tree.length" style="padding:10px 8px; display:flex; gap:4px">
+        <button style="flex:1; padding:4px 2px" @click="onNewMap">＋ 脑图</button>
+        <button style="flex:1; padding:4px 2px" @click="onNewFolder">＋ 文件夹</button>
+        <button style="flex:1; padding:4px 2px" @click="onNewFile">＋ 文件</button>
       </div>
     </div>
   </aside>

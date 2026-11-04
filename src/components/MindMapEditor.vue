@@ -15,7 +15,7 @@ import ExportXMind from 'simple-mind-map/src/plugins/ExportXMind.js'
 import NodeImgAdjust from 'simple-mind-map/src/plugins/NodeImgAdjust.js'
 import KeyboardNavigation from 'simple-mind-map/src/plugins/KeyboardNavigation.js'
 import {
-  store, api, toast, uiContextMenu, MIND_EXT
+  store, api, toast, uiContextMenu, MIND_EXT, syncRenameMap, sanitizeFileName
 } from '../store.js'
 
 // 插件只需注册一次
@@ -42,6 +42,7 @@ let mindMap = null
 let resizeObserver = null
 let saveTimer = null
 let loading = true
+let rootTextAtLoad = '' // 加载时的根节点文本，用于判断用户是否修改了根节点
 
 /* ---------- 主题预设 ---------- */
 const THEME_PRESETS = {
@@ -96,6 +97,13 @@ async function saveNow() {
   if (!mindMap || props.tab.readonly) return
   try {
     const gd = mindMap.getData(true) // { layout, root, theme, view }
+    const rootText = gd.root && gd.root.data ? gd.root.data.text : ''
+    // 根节点文本被修改 → 同步重命名磁盘文件（文件名 = 根节点名称）
+    if (rootTextAtLoad && rootText && rootText !== rootTextAtLoad) {
+      const renamed = await syncRenameMap(props.tab, rootText)
+      rootTextAtLoad = rootText
+      if (renamed) toast('文件名已同步为：' + sanitizeFileName(rootText) + MIND_EXT, 'ok')
+    }
     const doc = { format: 'c-mind', version: 1, ...gd }
     await api('fs:write', props.tab.path, JSON.stringify(doc, null, 2))
     props.tab.dirty = false
@@ -130,6 +138,7 @@ onMounted(async () => {
     mousewheelAction: 'zoom' // 与 Xmind 一致：滚轮缩放
   })
   if (doc.view) { try { mindMap.view.setTransformData(doc.view) } catch {} }
+  rootTextAtLoad = (mindMap.getData().data || {}).text || ''
   window.__cmindMap = mindMap // 调试/开发者工具用
 
   mindMap.on('data_change', () => {

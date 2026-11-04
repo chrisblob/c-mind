@@ -6,9 +6,9 @@ const { contextBridge, ipcRenderer } = require('electron')
 const ALLOWED = new Set([
   'config:get', 'config:set',
   'workspace:choose', 'workspace:set',
-  'fs:tree', 'fs:read', 'fs:write', 'fs:createFile', 'fs:createDir',
+  'fs:tree', 'fs:read', 'fs:write', 'fs:createFile', 'fs:createRaw', 'fs:createDir',
   'fs:rename', 'fs:move', 'fs:delete', 'fs:listMaps',
-  'os:openExternal', 'os:openPath',
+  'os:openExternal', 'os:openPath', 'os:openItem',
   'git:bind', 'git:unbind', 'git:status', 'git:commit', 'git:push', 'git:pull', 'git:log'
 ])
 

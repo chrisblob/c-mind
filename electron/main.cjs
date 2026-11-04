@@ -148,6 +148,24 @@ function registerFsIpc() {
     await fsp.writeFile(abs, content, 'utf-8')
     return abs
   })
+  // 新建普通文件（保留用户输入的完整文件名与扩展名）
+  ipcMain.handle('fs:createRaw', async (_e, dir, rawName, content = '') => {
+    const d = safePath(dir)
+    const name = String(rawName || '').trim()
+    if (!name) throw new Error('名称不能为空')
+    if (/[\\/:*?"<>|]/.test(name)) throw new Error('文件名不能包含 \\ / : * ? " < > |')
+    let abs = path.join(d, name)
+    let i = 1
+    const dot = name.lastIndexOf('.')
+    while (fs.existsSync(abs)) {
+      const base = dot > 0 ? name.slice(0, dot) : name
+      const ext = dot > 0 ? name.slice(dot) : ''
+      abs = path.join(d, `${base}-${i}${ext}`)
+      i++
+    }
+    await fsp.writeFile(abs, content, 'utf-8')
+    return abs
+  })
   ipcMain.handle('fs:createDir', async (_e, dir, rawName) => {
     const d = safePath(dir)
     const name = String(rawName || '').trim()
@@ -187,6 +205,13 @@ function registerFsIpc() {
     return shell.openExternal(url)
   })
   ipcMain.handle('os:openPath', (_e, p) => shell.showItemInFolder(safePath(p)))
+  // 用系统默认程序打开工作区内的普通文件
+  ipcMain.handle('os:openItem', async (_e, p) => {
+    const abs = safePath(p)
+    const err = await shell.openPath(abs)
+    if (err) throw new Error(err)
+    return true
+  })
 }
 
 /* ---------------- Git ---------------- */
@@ -327,6 +352,19 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('[c-mind] renderer loaded, userData =', app.getPath('userData'))
   })
+  // UI 自动化走查（仅开发验证用）
+  if (process.env.CMIND_UITEST) {
+    mainWindow.webContents.once('did-finish-load', async () => {
+      await new Promise(r => setTimeout(r, 1800))
+      try {
+        const result = await mainWindow.webContents.executeJavaScript('window.__cmindUITest()')
+        console.log('[uitest] RESULT ' + JSON.stringify(result, null, 2))
+      } catch (e) {
+        console.error('[uitest] failed:', e)
+      }
+      setTimeout(() => app.quit(), 500)
+    })
+  }
   // 冒烟截图（仅开发验证用）
   if (process.env.CMIND_SMOKE_SHOT) {
     mainWindow.webContents.once('did-finish-load', async () => {
