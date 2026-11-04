@@ -181,6 +181,17 @@ function registerFsIpc() {
 
   ipcMain.handle('export:save', async (_e, { defaultName, filters, content }) => {
     const cfg = loadConfig()
+    // 自动化测试用：设置 CMIND_EXPORT_DIR 时跳过系统保存对话框，直接写入该目录
+    if (process.env.CMIND_EXPORT_DIR) {
+      const absTest = path.join(process.env.CMIND_EXPORT_DIR, String(defaultName || 'export.bin'))
+      await fsp.mkdir(process.env.CMIND_EXPORT_DIR, { recursive: true })
+      if (content && typeof content === 'object' && content.base64 !== undefined) {
+        await fsp.writeFile(absTest, Buffer.from(content.base64, 'base64'))
+      } else {
+        await fsp.writeFile(absTest, String(content == null ? '' : content), 'utf-8')
+      }
+      return absTest
+    }
     const res = await dialog.showSaveDialog(mainWindow, {
       title: '导出脑图',
       defaultPath: path.join(cfg.workspaceDir || app.getPath('documents'), String(defaultName || '导图')),
@@ -540,7 +551,8 @@ function createWindow() {
     mainWindow.webContents.once('did-finish-load', async () => {
       await new Promise(r => setTimeout(r, 1800))
       try {
-        const mode = process.env.CMIND_UITEST_MODE || (process.env.CMIND_UITEST_SKIPGIT === '1' ? 'skipgit' : '')
+        // 安全默认：自动化自检永不触碰真实 Git 远程，除非显式 CMIND_UITEST_GIT=1
+        const mode = process.env.CMIND_UITEST_MODE || (process.env.CMIND_UITEST_GIT === '1' ? '' : 'skipgit')
         const result = await mainWindow.webContents.executeJavaScript('window.__cmindUITest(' + (mode ? JSON.stringify(mode) : '') + ')')
         console.log('[uitest] RESULT ' + JSON.stringify(result, null, 2))
       } catch (e) {

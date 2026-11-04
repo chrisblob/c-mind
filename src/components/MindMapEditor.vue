@@ -262,6 +262,7 @@ function toggleReadonly() {
 
 /* ---------- 导出 ---------- */
 function exportMenu(e) {
+  e.stopPropagation() // 阻止冒泡到 .app-shell 的同一次 click，否则菜单刚打开就被关闭
   const rect = e.target.getBoundingClientRect()
   uiContextMenu(rect.left, rect.bottom + 4, [
     { label: 'PNG 图片', action: () => doExport('png') },

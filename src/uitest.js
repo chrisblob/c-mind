@@ -6,6 +6,67 @@ import { parseImportText, buildFreeMind, buildOpml, buildMarkdown, extToKind } f
 import { openMap, closeContextMenu } from './store.js'
 window.__cmindUITest = async function (mode) {
   const sleepF = (ms) => new Promise(r => setTimeout(r, ms))
+  if (mode === 'exporttest') {
+    const S = window.__cmindStore
+    const out = { steps: [] }
+    const log = (name, data) => out.steps.push({ name, ...data })
+    const sleepE = (ms) => new Promise(r => setTimeout(r, ms))
+    // 打开 demo 的「产品路线图」
+    const row = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes('产品路线图'))
+    if (row) row.click()
+    await sleepE(2600)
+    const M = window.__cmindMap
+    if (!M) { log('open', { error: 'no map' }); return out }
+    log('open', { text: (M.getData().data || {}).text })
+    // 1) 核心导出器逐个调用
+    for (const t of ['png', 'svg', 'xmind', 'json']) {
+      try {
+        const data = await M.export(t, false, '导出测试')
+        log('mindmap-export', {
+          type: t,
+          kind: typeof data,
+          len: data ? String(data).length : 0,
+          prefix: data ? String(data).slice(0, 40) : ''
+        })
+      } catch (e) {
+        log('mindmap-export', { type: t, error: String(e && e.message || e) })
+      }
+    }
+    // 2) 互操作导出 + 保存通道（CMIND_EXPORT_DIR 下真实落盘）
+    try {
+      const gd = M.getData()
+      const md = (await import('./formats.js')).buildMarkdown(gd)
+      const saved = await window.cmind.invoke('export:save', { defaultName: '导出测试.md', content: md })
+      log('save-mardown', { saved })
+    } catch (e) { log('save-mardown', { error: String(e && e.message || e) }) }
+    try {
+      const png = await M.export('png', false, '导出测试')
+      const b64 = String(png).split(',')[1] || ''
+      const saved = await window.cmind.invoke('export:save', { defaultName: '导出测试.png', content: { base64: b64 } })
+      log('save-png', { saved, bytes: b64.length })
+    } catch (e) { log('save-png', { error: String(e && e.message || e) }) }
+    // 3) 导出菜单是否弹出且条目齐全
+    try {
+      const btn = [...document.querySelectorAll('.toolbar button')].find(b => b.textContent.includes('导出'))
+      btn && btn.click()
+      await sleepE(400)
+      log('export-menu', {
+        shown: !!document.querySelector('.context-menu'),
+        items: [...document.querySelectorAll('.context-menu .mi')].map(x => x.textContent.trim())
+      })
+      // 真点击「PNG 图片」菜单项，验证 菜单→doExport→保存 全链路
+      const pngItem = [...document.querySelectorAll('.context-menu .mi')].find(x => x.textContent.includes('PNG'))
+      if (pngItem) {
+        pngItem.click()
+        await sleepE(1500)
+        log('export-menu-click', { toasts: (window.__cmindStore.toasts || []).map(t => t.text) })
+      } else {
+        log('export-menu-click', { error: 'png item not found' })
+      }
+      window.__cmindStore.closeContextMenu && window.__cmindStore.closeContextMenu()
+    } catch (e) { log('export-menu', { error: String(e && e.message || e) }) }
+    return out
+  }
   if (mode === 'focus') {
     // ---- 专项验证：真实拖拽放大 / 画布放大 / 树排序 / 换行 ----
     const S = window.__cmindStore
