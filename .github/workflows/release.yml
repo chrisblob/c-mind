@@ -20,7 +20,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm dist
+      # pnpm 10 默认不执行依赖的 postinstall，Electron 二进制需要显式重建，否则 electron-builder 找不到 dist
+      - run: pnpm rebuild electron esbuild
+      - run: ls -la node_modules/electron/dist || true
+      - run: pnpm build
+      - run: pnpm exec electron-builder --mac --publish never
+      - run: ls -la release
       - uses: softprops/action-gh-release@v2
         with:
           files: release/*.dmg
+          generate_release_notes: true

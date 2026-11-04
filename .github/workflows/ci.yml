@@ -18,5 +18,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm rebuild electron esbuild
       - run: pnpm build
       - run: node --check electron/main.cjs && node --check electron/preload.cjs
