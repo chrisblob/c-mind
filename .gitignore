@@ -6,3 +6,6 @@ release/
 *.log
 .DS_Store
 .idea/
+
+# 本地测试工作区
+.tmp-*/
