@@ -5,8 +5,8 @@
  */
 import { ref, computed } from 'vue'
 import {
-  store, api, openMap, createMap, createDir, openRawFile,
-  renamePath, movePath, deletePath, uiPrompt, uiContextMenu, collectDirs, toast
+  store, api, openMap, openDir, createMap, createDir, openRawFile,
+  renamePath, movePath, deletePath, uiPrompt, uiContextMenu, collectDirs, toast, reorderSibling
 } from '../store.js'
 
 const props = defineProps({
@@ -26,6 +26,7 @@ function onClick() {
   if (props.node.type === 'dir') {
     store.currentDir = props.node.path // 标记当前操作文件夹
     expanded.value = !expanded.value
+    openDir(props.node.path) // 右侧展示文件夹内容
   } else if (props.node.isMap) {
     openMap(props.node.path)
   } else {
@@ -148,6 +149,7 @@ async function onDrop(e) {
       @dragover="onDragOver"
       @dragleave="onDragLeave"
       @drop.prevent="onDrop"
+      @dragend="onDragEnd"
     >
       <span v-if="node.type === 'dir'" class="arrow" :class="{ open: expanded }">▶</span>
       <span v-else style="width:14px;flex:none"></span>

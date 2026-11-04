@@ -79,12 +79,60 @@ export async function chooseWorkspace() {
   return true
 }
 
+/** 在名称排序基础上叠加用户拖拽的自定义顺序（config.treeOrder: { 父目录: [文件名...] }） */
+function applyTreeOrder(nodes, parentPath) {
+  const order = (store.config && store.config.treeOrder) || {}
+  const ord = order[parentPath] || []
+  nodes.sort((a, b) => {
+    const ia = ord.indexOf(a.name)
+    const ib = ord.indexOf(b.name)
+    if (ia !== -1 && ib !== -1) return ia - ib
+    if (ia !== -1) return -1
+    if (ib !== -1) return 1
+    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+    return a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+  })
+  nodes.forEach(n => { if (n.children) applyTreeOrder(n.children, n.path) })
+}
+
 export async function refreshTree() {
   try {
     store.tree = await api('fs:tree')
+    applyTreeOrder(store.tree, store.workspace)
   } catch (e) {
     store.tree = []
   }
+}
+
+/** 同文件夹内拖拽排序：把 src 移动到 target 当前位置并持久化 */
+export async function reorderSibling(srcPath, targetPath) {
+  if (srcPath === targetPath) return false
+  const parent = srcPath.slice(0, srcPath.lastIndexOf('/'))
+  const siblings = parent === store.workspace
+    ? store.tree
+    : (function find(list) {
+      for (const n of list) {
+        if (n.path === parent) return n.children || []
+        const r = n.children && find(n.children)
+        if (r) return r
+      }
+      return null
+    })(store.tree)
+  if (!siblings) return false
+  const srcName = srcPath.slice(srcPath.lastIndexOf('/') + 1)
+  const tgtName = targetPath.slice(targetPath.lastIndexOf('/') + 1)
+  const names = siblings.map(n => n.name)
+  if (!names.includes(srcName) || !names.includes(tgtName)) return false
+  const wasIdx = names.indexOf(srcName)
+  names.splice(wasIdx, 1)
+  const tgtIdx = names.indexOf(tgtName)
+  // 让 src 正好占据 tgt 原来的位置：src 在 tgt 之前（含紧邻）→ 插到 tgt 之后；否则插到 tgt 之前
+  names.splice(tgtIdx + (wasIdx <= tgtIdx ? 1 : 0), 0, srcName)
+  const treeOrder = { ...((store.config && store.config.treeOrder) || {}), [parent]: names }
+  store.config.treeOrder = treeOrder
+  await api('config:set', { treeOrder })
+  await refreshTree()
+  return true
 }
 
 /* ---------- 标签页 ---------- */
@@ -109,9 +157,31 @@ export async function openMap(absPath, focus = true) {
   }
   const tab = {
     id: 'tab-' + tabSeq++,
+    type: 'map',
     path: absPath,
     rel: relOf(absPath),
     name: absPath.split('/').pop().replace(new RegExp(MIND_EXT + '$'), ''),
+    dirty: false,
+    readonly: false
+  }
+  store.tabs.push(tab)
+  if (focus) store.activeId = tab.id
+  return tab
+}
+
+/** 打开文件夹视图标签：右侧展示该文件夹下的文件与文件夹 */
+export async function openDir(absPath, focus = true) {
+  const existing = store.tabs.find(t => t.type === 'dir' && t.path === absPath)
+  if (existing) {
+    if (focus) store.activeId = existing.id
+    return existing
+  }
+  const tab = {
+    id: 'tab-' + tabSeq++,
+    type: 'dir',
+    path: absPath,
+    rel: relOf(absPath),
+    name: absPath.split('/').pop(),
     dirty: false,
     readonly: false
   }

@@ -21,7 +21,7 @@ async function onAdd() {
       @click.middle="closeTab(t.id)"
       :data-tip="t.rel"
     >
-      <span class="tname">{{ t.name }}</span>
+      <span class="tname">{{ t.type === 'dir' ? '📁 ' : '' }}{{ t.name }}</span>
       <span v-if="t.dirty" class="dot">•</span>
       <span class="close" @click.stop="closeTab(t.id)">✕</span>
     </div>

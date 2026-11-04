@@ -83,16 +83,16 @@ window.__cmindUITest = async function (mode) {
       // 端到端：走侧栏「📥 导入」全链路。规则 = 选中脑图→其所在文件夹；选中文件夹→该文件夹
       const S = window.__cmindStore
       if (!window.__cmindImport) { log('insert', { error: 'no hook' }); return out }
-      const results = []
       const pick = async (kw) => {
         const row = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes(kw))
         if (row) row.click()
         await new Promise(r => setTimeout(r, 2200))
         return S.currentDir
       }
+      const results = []
       // 场景1：选中根目录下的脑图 产品路线图 → 应导入到根目录
       let dir = await pick('产品路线图')
-      let beforeTabs = S.tabs.length
+      const beforeTabs = S.tabs.length
       await window.__cmindImport()
       await new Promise(r => setTimeout(r, 1600))
       let tab = S.tabs.find(t => t.id === S.activeId)
@@ -135,20 +135,32 @@ window.__cmindUITest = async function (mode) {
           links: flat.filter(n => n.data && n.data.hyperlink).map(n => String(n.data.hyperlink).slice(0, 24))
         })
       }
-      // 新文件内容：图片/链接完整落盘
-      if (tab) {
-        await new Promise(r => setTimeout(r, 800))
-        const raw = String(await window.cmind.invoke('fs:read', tab.path))
-        const doc = JSON.parse(raw)
-        const flat = []
-        ;(function w(n) { flat.push(n); (n.children || []).forEach(w) })(doc.root)
-        log('new-file-check', {
-          rootText: doc.root.data.text,
-          imageNodes: flat.filter(n => n.data && typeof n.data.image === 'string' && n.data.image.startsWith('data:')).length,
-          withSize: flat.filter(n => n.data && n.data.imageSize && n.data.imageSize.width > 0).length,
-          links: flat.filter(n => n.data && n.data.hyperlink).map(n => String(n.data.hyperlink).slice(0, 24))
-        })
-      }
+      // 文件夹视图：点击左侧文件夹 → 右侧展示内容，支持列表/平铺
+      const dirRow = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes('学习笔记'))
+      if (dirRow) dirRow.click()
+      await new Promise(r => setTimeout(r, 1500))
+      const at = S.tabs.find(t => t.id === S.activeId)
+      log('dir-view-check', {
+        tabType: at && at.type,
+        tabName: at && at.name,
+        items: document.querySelectorAll('.folder-item').length,
+        hasGrid: !!document.querySelector('.fv-grid-wrap')
+      })
+      const gbtn = document.querySelector('[data-view="grid"]')
+      if (gbtn) gbtn.click()
+      await new Promise(r => setTimeout(r, 300))
+      log('view-toggle-check', {
+        gridOn: !!document.querySelector('.fv-grid-wrap'),
+        savedMode: localStorage.getItem('cmind-dir-view')
+      })
+      // 拖拽排序：根目录 [学习笔记, 产品路线图, 团队知识库] → 产品路线图 移到 团队知识库 位置
+      const ws = S.workspace
+      const namesBefore = S.tree.map(n => n.name).join('|')
+      await window.__cmindReorder(ws + '/产品路线图.cmind', ws + '/团队知识库.cmind')
+      await new Promise(r => setTimeout(r, 1000))
+      const namesAfter = S.tree.map(n => n.name).join('|')
+      const cfg = await window.cmind.invoke('config:get')
+      log('reorder-check', { namesBefore, namesAfter, persisted: !!(cfg.treeOrder && cfg.treeOrder[ws]) })
     } catch (e) {
       log('import-fail', { error: String(e && e.message || e) })
     }

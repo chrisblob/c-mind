@@ -7,6 +7,7 @@ import TabBar from './components/TabBar.vue'
 import FileTree from './components/FileTree.vue'
 import GitPanel from './components/GitPanel.vue'
 import MindMapEditor from './components/MindMapEditor.vue'
+import FolderView from './components/FolderView.vue'
 import {
   store, api, initStore, chooseWorkspace, handleCmindLink, closeContextMenu,
   activeTab, createMap, closeTab, uiPrompt, toast
@@ -83,7 +84,12 @@ onBeforeUnmount(() => {
     <FileTree />
     <div class="main">
       <TabBar />
-      <MindMapEditor v-if="activeTab()" :key="activeTab().id" :tab="activeTab()" />
+      <FolderView
+        v-if="activeTab() && activeTab().type === 'dir'"
+        :key="activeTab().id + activeTab().path"
+        :tab="activeTab()"
+      />
+      <MindMapEditor v-else-if="activeTab()" :key="activeTab().id" :tab="activeTab()" />
       <div v-else class="empty-state">
         <div class="big">🧠</div>
         <div>在左侧点击打开脑图，或按 <kbd>⌘N</kbd> / 点击标签栏的 <b>＋</b> 新建</div>

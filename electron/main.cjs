@@ -73,9 +73,9 @@ async function readTree(dir, rel = '') {
       })
     }
   }
-  // 新建的（脑图/文件夹）排最上面：按创建时间倒序，同一时间按名称自然排序
+  // 默认排序：文件夹在前，其余按名称自然排序（自定义拖拽顺序由前端叠加）
   out.sort((a, b) => {
-    if (b.born !== a.born) return b.born - a.born
+    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
     return a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
   })
   return out
