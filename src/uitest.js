@@ -116,6 +116,11 @@ window.__cmindUITest = async function (mode) {
         tabs: beforeTabs + '→' + S.tabs.length
       })
       log('import-as-new-file', results)
+      // 画布渲染校验：所有节点 <img> 必须真实解码成功（naturalWidth>0）
+      await new Promise(r => setTimeout(r, 1200))
+      const imgs = [...document.querySelectorAll('svg foreignObject img, svg image')]
+      const ok = imgs.filter(el => el.tagName === 'IMG' ? el.naturalWidth > 0 : el.href.baseVal.startsWith('data:'))
+      log('canvas-render-check', { imgCount: imgs.length, renderedOk: ok.length })
       // 最新导入文件内容校验（图片/链接落盘）
       if (tab) {
         await new Promise(r => setTimeout(r, 800))
@@ -125,7 +130,8 @@ window.__cmindUITest = async function (mode) {
         ;(function w(n) { flat.push(n); (n.children || []).forEach(w) })(doc.root)
         log('new-file-check', {
           rootText: doc.root.data.text,
-          imageNodes: flat.filter(n => n.data && n.data.image && String(n.data.image.url || '').startsWith('data:')).length,
+          imageNodes: flat.filter(n => n.data && typeof n.data.image === 'string' && n.data.image.startsWith('data:')).length,
+          withSize: flat.filter(n => n.data && n.data.imageSize && n.data.imageSize.width > 0).length,
           links: flat.filter(n => n.data && n.data.hyperlink).map(n => String(n.data.hyperlink).slice(0, 24))
         })
       }
@@ -138,7 +144,8 @@ window.__cmindUITest = async function (mode) {
         ;(function w(n) { flat.push(n); (n.children || []).forEach(w) })(doc.root)
         log('new-file-check', {
           rootText: doc.root.data.text,
-          imageNodes: flat.filter(n => n.data && n.data.image && String(n.data.image.url || '').startsWith('data:')).length,
+          imageNodes: flat.filter(n => n.data && typeof n.data.image === 'string' && n.data.image.startsWith('data:')).length,
+          withSize: flat.filter(n => n.data && n.data.imageSize && n.data.imageSize.width > 0).length,
           links: flat.filter(n => n.data && n.data.hyperlink).map(n => String(n.data.hyperlink).slice(0, 24))
         })
       }

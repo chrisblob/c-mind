@@ -543,6 +543,15 @@ async function repairImageSizes(root) {
   walk(root)
   for (const n of list) {
     const d = n.data
+    // 兼容历史误写的对象格式 {url,...} → sm-m 规范格式
+    if (d.image && typeof d.image === 'object' && d.image.url) {
+      const { url, width, height } = d.image
+      d.image = String(url)
+      if ((!d.imageSize || !d.imageSize.width) && Number(width) > 0 && Number(height) > 0) {
+        d.imageSize = { width: Number(width), height: Number(height), custom: false }
+      }
+      d.__imgFixed = true
+    }
     const sz = d.imageSize || {}
     const needFix = !sz.width || !sz.height || sz.custom ||
       sz.width > THUMB_MAX_W + 0.5 || sz.height > THUMB_MAX_H + 0.5

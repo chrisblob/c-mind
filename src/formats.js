@@ -55,8 +55,18 @@ export function normalizeNodeTree(obj) {
   if (obj.data && Array.isArray(obj.children)) {
     const d = obj.data
     const data = { text: String(d.text || '') }
-    for (const k of ['image', 'hyperlink', 'hyperlinkTitle', 'note']) {
+    for (const k of ['hyperlink', 'hyperlinkTitle', 'note', 'imageSize']) {
       if (d[k] !== undefined && d[k] !== null && d[k] !== '') data[k] = d[k]
+    }
+    // 兼容历史误写的对象格式 {url,...}：转回 sm-m 规范的 image(URL 字符串) + imageSize
+    const img = d.image
+    if (img && typeof img === 'object' && img.url) {
+      data.image = String(img.url)
+      const w = Number(img.width) || 0
+      const h = Number(img.height) || 0
+      if (!data.imageSize && w > 0 && h > 0) data.imageSize = { width: w, height: h, custom: false }
+    } else if (typeof img === 'string' && img) {
+      data.image = img
     }
     return { data, children: (obj.children || []).map(normalizeNodeTree) }
   }
@@ -82,7 +92,11 @@ function xmindTopicJson(t) {
   for (const c of att) children.push(xmindTopicJson(c))
   const extra = {}
   if (t.image && okSrc(t.image.src)) {
-    extra.image = { url: t.image.src, width: t.image.width, height: t.image.height, custom: false }
+    // sm-m 节点格式：data.image = URL 字符串，尺寸放 data.imageSize
+    extra.image = String(t.image.src)
+    const w = Number(t.image.width) || 0
+    const h = Number(t.image.height) || 0
+    if (w > 0 && h > 0) extra.imageSize = { width: w, height: h, custom: false }
   }
   if (okHref(t.href)) extra.hyperlink = t.href
   return node(t.title || '', children, extra)
@@ -111,7 +125,7 @@ function xmindTopicXml(el) {
   if (imgEl) {
     const src = imgEl.getAttributeNS('http://www.w3.org/1999/xhtml', 'src')
       || imgEl.getAttribute('xhtml:src') || imgEl.getAttribute('src')
-    if (okSrc(src)) extra.image = { url: src, custom: false }
+    if (okSrc(src)) extra.image = String(src) // sm-m：image 为 URL 字符串，尺寸打开时由 repairImageSizes 探测
   }
   const href = el.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
   if (okHref(href)) extra.hyperlink = href
