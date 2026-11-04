@@ -335,7 +335,7 @@ function thumbSize(nat, fallbackW, fallbackH) {
 async function openImageViewer(node) {
   const d = node && typeof node.getData === 'function' ? node.getData() : null
   if (!d || !d.image) { toast('当前节点没有图片', 'error'); return }
-  const v = { url: d.image, title: d.imageTitle || d.text || '', scale: 1, x: 0, y: 0, natW: 0, natH: 0 }
+  const v = { url: d.image, title: d.imageTitle || d.text || '', scale: 1, x: 0, y: 0, px: 0, py: 0, natW: 0, natH: 0 }
   imageViewer.value = v
   const nat = await probeImageSize(d.image)
   if (nat && imageViewer.value === v) {
@@ -353,11 +353,34 @@ function viewerZoom(delta) {
 function viewerFit() {
   const v = imageViewer.value
   if (!v || !v.natW) return
-  const sw = window.innerWidth * 0.82
-  const sh = window.innerHeight * 0.66
+  const st = document.querySelector('.img-viewer .viewer-stage')
+  const sw = (st ? st.clientWidth : window.innerWidth * 0.7) * 0.94
+  const sh = (st ? st.clientHeight : window.innerHeight * 0.6) * 0.94
   v.scale = Math.max(IMG_VIEW_SCALE_MIN, Math.min(2, Math.min(sw / v.natW, sh / v.natH)))
   v.x = 0
   v.y = 0
+}
+
+/* 拖动标题栏移动悬浮弹窗 */
+let panelDrag = null
+function viewerPanelDown(e) {
+  if (e.target.closest && e.target.closest('button')) return
+  const v = imageViewer.value
+  if (!v) return
+  panelDrag = { sx: e.clientX, sy: e.clientY, ox: v.px || 0, oy: v.py || 0 }
+  window.addEventListener('mousemove', panelMove)
+  window.addEventListener('mouseup', panelUp)
+}
+function panelMove(e) {
+  const v = imageViewer.value
+  if (!panelDrag || !v) return
+  v.px = panelDrag.ox + e.clientX - panelDrag.sx
+  v.py = panelDrag.oy + e.clientY - panelDrag.sy
+}
+function panelUp() {
+  panelDrag = null
+  window.removeEventListener('mousemove', panelMove)
+  window.removeEventListener('mouseup', panelUp)
 }
 function onViewerWheel(e) {
   const v = imageViewer.value
@@ -717,21 +740,23 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
       </div>
     </div>
 
-    <!-- 图片大图查看（可放大/缩小） -->
+    <!-- 图片大图查看（悬浮弹窗，可放大/缩小、可拖动） -->
     <div v-if="imageViewer" class="overlay img-viewer" @click.self="closeImageViewer">
-      <div class="viewer-bar">
-        <span class="vname" :title="imageViewer.title">{{ imageViewer.title || '图片预览' }}</span>
-        <span class="vspace"></span>
-        <button @click="viewerZoom(-0.25)">－</button>
-        <span class="vpct">{{ Math.round(imageViewer.scale * 100) }}%</span>
-        <button @click="viewerZoom(0.25)">＋</button>
-        <button @click="viewerFit">适合窗口</button>
-        <button @click="imageViewer.scale = 1; imageViewer.x = 0; imageViewer.y = 0">100%</button>
-        <button class="primary" @click="closeImageViewer">关闭</button>
-      </div>
-      <div class="viewer-stage" @wheel.prevent="onViewerWheel" @mousedown.prevent="viewerDown" @dblclick="viewerFit">
-        <img :src="imageViewer.url" draggable="false"
-             :style="{ transform: `translate(${imageViewer.x}px, ${imageViewer.y}px) scale(${imageViewer.scale})` }" />
+      <div class="viewer-panel" :style="{ transform: `translate(${imageViewer.px || 0}px, ${imageViewer.py || 0}px)` }">
+        <div class="viewer-bar" @mousedown.prevent="viewerPanelDown">
+          <span class="vname" :title="imageViewer.title">{{ imageViewer.title || '图片预览' }}</span>
+          <span class="vspace"></span>
+          <button @click="viewerZoom(-0.25)">－</button>
+          <span class="vpct">{{ Math.round(imageViewer.scale * 100) }}%</span>
+          <button @click="viewerZoom(0.25)">＋</button>
+          <button @click="viewerFit">适合窗口</button>
+          <button @click="imageViewer.scale = 1; imageViewer.x = 0; imageViewer.y = 0">100%</button>
+          <button class="primary" @click="closeImageViewer">关闭</button>
+        </div>
+        <div class="viewer-stage" @wheel.prevent="onViewerWheel" @mousedown.prevent="viewerDown" @dblclick="viewerFit">
+          <img :src="imageViewer.url" draggable="false"
+               :style="{ transform: `translate(${imageViewer.x}px, ${imageViewer.y}px) scale(${imageViewer.scale})` }" />
+        </div>
       </div>
     </div>
 

@@ -410,14 +410,17 @@ kbd {
 }
 
 /* 图片大图查看 */
-.img-viewer { flex-direction: column; padding: 0; background: rgba(12, 14, 18, .92); }
-.viewer-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: #1f2430; color: #e8ebf2; }
+.img-viewer { padding: 0; background: rgba(10, 12, 18, .38); }
+.viewer-panel { width: min(72vw, 1120px); height: min(70vh, 760px); max-width: 92vw; max-height: 88vh;
+  display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: #11141b;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .08); }
+.viewer-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: #1f2430; color: #e8ebf2; cursor: move; user-select: none; }
 .viewer-bar .vname { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; opacity: .9; }
 .viewer-bar .vspace { flex: 1; }
 .viewer-bar .vpct { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; font-size: 13px; }
 .viewer-bar button { border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: #e8ebf2; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
 .viewer-bar button:hover { background: rgba(255,255,255,.16); }
 .viewer-bar button.primary { background: #4a7dff; border-color: #4a7dff; }
-.viewer-stage { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; }
+.viewer-stage { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; background: #0c0e12; }
 .viewer-stage:active { cursor: grabbing; }
 .viewer-stage img { max-width: none; max-height: none; transform-origin: center center; transition: transform .06s ease-out; user-select: none; -webkit-user-drag: none; }
