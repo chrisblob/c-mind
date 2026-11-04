@@ -17,7 +17,8 @@
     "start": "electron .",
     "icon": "python3 scripts/gen-icon.py && bash scripts/make-icns.sh",
     "dist": "vite build && electron-builder --mac && bash scripts/resign-mac.sh release/mac-arm64/C-Mind.app",
-    "pack": "vite build && electron-builder --dir --mac"
+    "pack": "vite build && electron-builder --dir --mac",
+    "dist:win": "vite build && electron-builder --win"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",

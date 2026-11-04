@@ -4,6 +4,7 @@ const { execSync } = require('child_process')
 const path = require('path')
 
 exports.default = async function (context) {
+  if (context.electronPlatformName !== 'darwin') return // 仅 macOS 包需要 ad-hoc 签名
   const app = path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app')
   console.log('afterPack: ad-hoc signing', app)
   execSync(`codesign --force --deep --sign - "${app}"`, { stdio: 'inherit' })

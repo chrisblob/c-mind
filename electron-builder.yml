@@ -26,3 +26,19 @@ mac:
 
 dmg:
   title: C-Mind ${version}
+
+win:
+  icon: build/icon.ico
+  artifactName: C-Mind-${version}-win-x64.${ext}
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: C-Mind-${version}-win-x64-setup.${ext}
+  shortcutName: C-Mind 心图

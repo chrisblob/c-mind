@@ -34,3 +34,32 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "C-Mind ${TAG#v}" --generate-notes
           gh release upload "$TAG" release/*.dmg --clobber
           gh release view "$TAG" --json assets -q '.assets[].name'
+
+  win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+      - run: pnpm rebuild electron esbuild
+        shell: bash
+      - run: pnpm build
+        shell: bash
+      - run: pnpm exec electron-builder --win --x64
+        shell: bash
+      - name: Upload release assets (gh CLI)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "C-Mind ${TAG#v}" --generate-notes
+          gh release upload "$TAG" release/C-Mind-*-win-x64-setup.exe release/C-Mind-*-win-x64.zip --clobber
+          gh release view "$TAG" --json assets -q '.assets[].name'
