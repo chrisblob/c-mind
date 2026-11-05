@@ -196,7 +196,9 @@ function registerFsIpc() {
 
     if (ext === 'cmind' || ext === 'json' || ext === 'mm' || ext === 'opml' || ext === 'md' || ext === 'markdown' || ext === 'txt') {
       const text = await fsp.readFile(abs, 'utf-8')
-      return { path: abs, name, ext, kind: ext === 'cmind' ? 'json' : (ext === 'txt' ? 'markdown' : ext), text }
+      // 归一化 kind：扩展名 → 解析器名称（md/markdown/txt → markdown；mm → freemind）
+      const KIND_MAP = { md: 'markdown', markdown: 'markdown', txt: 'markdown', mm: 'freemind' }
+      return { path: abs, name, ext, kind: ext === 'cmind' ? 'json' : (KIND_MAP[ext] || ext), text }
     }
     throw new Error('暂不支持该格式的导入：.' + ext)
   })

@@ -173,12 +173,22 @@ function opmlNode(el) {
 /* Markdown：标题(#/##/…) 与无序列表(- * +)缩进，转成树 */
 export function parseMarkdown(text) {
   const lines = String(text || '').split(/\r?\n/)
-  const root = node('导入笔记')
+  // 第一个一级标题（# ）作为根节点；没有一级标题时保持默认
+  let rootText = '导入笔记'
+  let firstH1Idx = -1
+  let inCodePre = false
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*```/.test(lines[i])) { inCodePre = !inCodePre; continue }
+    if (!inCodePre && /^#\s+\S/.test(lines[i])) { rootText = lines[i].replace(/^#\s+/, '').trim(); firstH1Idx = i; break }
+  }
+  const root = node(rootText)
   const stack = [{ depth: 0, node: root }]
   let inCode = false
-  for (const raw of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]
     if (/^\s*```/.test(raw)) { inCode = !inCode; continue }
     if (inCode || !raw.trim()) continue
+    if (i === firstH1Idx) continue // 已用作根节点
     const h = raw.match(/^(#{1,6})\s+(.*)$/)
     if (h) {
       const depth = h[1].length
