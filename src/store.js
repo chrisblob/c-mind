@@ -17,6 +17,7 @@ export const store = reactive({
   currentDir: '', // 当前操作的文件夹（新建脑图/文件夹的默认位置）
 
   gitOpen: false,
+  uuidIndex: null, // uuid → 绝对路径 索引（refreshTree 时失效，按需重建）
 
   // UI 服务状态
   requestSave: null, // 编辑器注册的保存函数（Cmd+S）
@@ -80,6 +81,7 @@ export async function chooseWorkspace() {
 }
 
 export async function refreshTree() {
+  store.uuidIndex = null
   try {
     store.tree = await api('fs:tree')
   } catch (e) {
@@ -153,10 +155,17 @@ export function closeTab(id) {
 }
 
 /* ---------- 脑图文件 ---------- */
+export function genUuid() {
+  return (window.crypto && window.crypto.randomUUID)
+    ? window.crypto.randomUUID()
+    : 'u-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
+}
+
 export function newMapDoc(rootText = '中心主题') {
   return {
     format: 'c-mind',
     version: 1,
+    uuid: genUuid(), // 脑图唯一身份：cmind:// 链接优先按 uuid 解析，移动/重命名后依然有效
     layout: 'logicalStructure',
     theme: { template: 'default', config: {} },
     view: null,
@@ -248,17 +257,18 @@ export async function syncRenameMap(tab, newBase) {
   }
 }
 
+function walkMaps(list) {
+  return (list || []).flatMap(item =>
+    item.type === 'dir' ? walkMaps(item.children) : (item.isMap ? [item] : [])
+  )
+}
+
 /**
  * 移动/重命名后，重写全工作区 .cmind 文件里指向旧路径的 cmind:// 链接，保证脑图互链不失效。
  * 支持文件夹整体移动（前缀匹配）；打开中且有未保存改动的文件跳过（避免覆盖用户编辑）。
  * @returns {number} 被更新的文件数
  */
 async function rewriteLinksAfterMove(oldRel, newRel) {
-  function walkMaps(list) {
-    return (list || []).flatMap(item =>
-      item.type === 'dir' ? walkMaps(item.children) : (item.isMap ? [item] : [])
-    )
-  }
   const dirtyOpen = new Set(store.tabs.filter(t => t.dirty).map(t => t.path))
   let fixed = 0
   for (const m of walkMaps(store.tree)) {
@@ -357,21 +367,59 @@ export async function deletePath(p, name) {
 }
 
 /* ---------- cmind:// 内部跳转 ---------- */
+/** 扫描全工作区 .cmind 构建 uuid → 路径索引；发现缺 uuid 的旧文件就地回填（打开中且有未保存改动的跳过） */
+async function buildUuidIndex() {
+  const idx = {}
+  const dirtyOpen = new Set(store.tabs.filter(t => t.dirty).map(t => t.path))
+  for (const m of walkMaps(store.tree)) {
+    try {
+      if (dirtyOpen.has(m.path)) continue
+      const raw = String(await api('fs:read', m.path))
+      const doc = JSON.parse(raw)
+      if (doc.uuid) { idx[doc.uuid] = m.path; continue }
+      // 旧文件回填 uuid
+      doc.uuid = genUuid()
+      idx[doc.uuid] = m.path
+      await api('fs:write', m.path, JSON.stringify(doc, null, 2))
+    } catch { /* 单个文件失败不中断索引构建 */ }
+  }
+  store.uuidIndex = idx
+  return idx
+}
+
+/** 按 uuid 解析脑图绝对路径（索引懒构建） */
+export async function resolveMapByUuid(uuid) {
+  if (!uuid) return null
+  if (!store.uuidIndex) await buildUuidIndex()
+  return store.uuidIndex[uuid] || null
+}
+
 export async function handleCmindLink(url) {
   try {
     const u = new URL(url)
+    const uuid = u.searchParams.get('uuid')
     const rel = u.searchParams.get('path')
+    // 1) uuid 优先：文件被移动/重命名后依然有效
+    if (uuid) {
+      const abs = await resolveMapByUuid(uuid)
+      if (abs) {
+        await openMap(abs)
+        toast('已打开：' + abs.replace(/\\/g, '/').split('/').pop(), 'ok')
+        return
+      }
+      // uuid 失效（文件被删/未入库）→ 继续按 path 兜底
+    }
     if (!rel) { toast('无效的脑图链接', 'error'); return }
     const ws = store.workspace.replace(/\/+$/, '')
     const abs = ws + '/' + decodeURIComponent(rel)
     try {
       await api('fs:read', abs)
     } catch {
-      toast('目标脑图不存在：' + rel, 'error')
+      toast('目标脑图不存在：' + decodeURIComponent(rel), 'error')
       return
     }
     await openMap(abs)
-    toast('已打开：' + rel, 'ok')
+    toast('已打开：' + decodeURIComponent(rel), 'ok')
   } catch (e) {
     toast('打开脑图链接失败', 'error')
   }

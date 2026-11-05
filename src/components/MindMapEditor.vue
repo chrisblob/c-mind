@@ -14,7 +14,7 @@ import Export from 'simple-mind-map/src/plugins/Export.js'
 import ExportXMind from 'simple-mind-map/src/plugins/ExportXMind.js'
 import KeyboardNavigation from 'simple-mind-map/src/plugins/KeyboardNavigation.js'
 import {
-  store, api, toast, uiContextMenu, MIND_EXT, syncRenameMap, sanitizeFileName, importMapAsFile
+  store, api, toast, uiContextMenu, MIND_EXT, syncRenameMap, sanitizeFileName, importMapAsFile, genUuid
 } from '../store.js'
 import {
   extToKind, buildFreeMind, buildOpml, buildMarkdown, dataUrlToBase64
@@ -106,9 +106,10 @@ async function saveNow() {
       rootTextAtLoad = rootText
       if (renamed) toast('文件名已同步为：' + sanitizeFileName(rootText) + MIND_EXT, 'ok')
     }
-    const doc = { format: 'c-mind', version: 1, ...gd }
+    const doc = { format: 'c-mind', version: 1, uuid: props.tab.uuid, ...gd }
     await api('fs:write', props.tab.path, JSON.stringify(doc, null, 2))
     props.tab.dirty = false
+    store.uuidIndex = null
   } catch (e) {
     toast('保存失败：' + (e.message || e), 'error')
   }
@@ -127,6 +128,9 @@ onMounted(async () => {
     toast('文件读取失败，已创建空白导图', 'error')
     doc = { layout: 'logicalStructure', theme: { template: 'default', config: {} }, root: { data: { text: '中心主题' }, children: [] } }
   }
+  // uuid 回填：旧文件缺 uuid → 生成并随自动保存落盘（cmind:// 链接按 uuid 解析的前提）
+  if (!doc.uuid) doc.uuid = genUuid()
+  props.tab.uuid = doc.uuid
   layoutName.value = doc.layout || 'logicalStructure'
   // 兼容其他工具产出的文件：补齐图片尺寸
   let repairedImages = 0
@@ -517,7 +521,18 @@ async function applyDialog() {
         exec('SET_NODE_HYPERLINK', node, url, d.webTitle.trim())
       } else {
         if (!d.selMap) { toast('请选择一个目标脑图', 'error'); return }
-        const link = 'cmind://open?path=' + encodeURIComponent(d.selMap.rel)
+        // uuid + path 双保险：uuid 主解析（移动/重命名后仍有效），path 兜底可读
+        let targetUuid = ''
+        try {
+          const td = JSON.parse(String(await api('fs:read', d.selMap.path)))
+          if (td.uuid) targetUuid = td.uuid
+          else {
+            targetUuid = genUuid()
+            td.uuid = targetUuid
+            await api('fs:write', d.selMap.path, JSON.stringify(td, null, 2))
+          }
+        } catch { targetUuid = '' }
+        const link = 'cmind://open?uuid=' + targetUuid + '&path=' + encodeURIComponent(d.selMap.rel)
         exec('SET_NODE_HYPERLINK', node, link, d.selMap.name.replace(new RegExp(MIND_EXT + '$'), ''))
       }
     } else if (d.mode === 'note') {

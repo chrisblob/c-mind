@@ -3,7 +3,7 @@
  * 覆盖：当前目录新建、图片插入渲染、脑图链接树形选择、多格式导入/导出转换、git 绑定/分支/提交
  */
 import { parseImportText, buildFreeMind, buildOpml, buildMarkdown, extToKind } from './formats.js'
-import { openMap, closeContextMenu } from './store.js'
+import { openMap, closeContextMenu, handleCmindLink } from './store.js'
 window.__cmindUITest = async function (mode) {
   const sleepF = (ms) => new Promise(r => setTimeout(r, ms))
   if (mode === 'exporttest') {
@@ -217,6 +217,28 @@ window.__cmindUITest = async function (mode) {
         let dupDirMsg = ''
         try { await window.cmind.invoke('fs:createDir', ws, '学习笔记') } catch (e) { dupDirMsg = String(e.message || e) }
         log('dup-check', { dupFileMsg, dupDirMsg })
+        // uuid 链接：path 参数故意写错 → uuid 应兜底解析；再把文件移走（path 更 stale）→ uuid 依然解析成功
+        const uidDoc = { format: 'c-mind', version: 1, uuid: 'uitest-fixed-uuid-0001', root: { data: { text: 'UUID目标' }, children: [] } }
+        await window.cmind.invoke('fs:write', ws + '/学习笔记/UUID目标.cmind', JSON.stringify(uidDoc, null, 2))
+        await window.__cmindMove(ws + '/产品路线图.cmind', ws + '/学习笔记') // 触发 refreshTree 失效索引（实际无影响，仅制造树变化）
+        await new Promise(r => setTimeout(r, 1200))
+        await window.__cmindMove(ws + '/学习笔记/产品路线图.cmind', ws)
+        await new Promise(r => setTimeout(r, 1200))
+        const staleLink = 'cmind://open?uuid=uitest-fixed-uuid-0001&path=' + encodeURIComponent('已不存在的路径/UUID目标.cmind')
+        const beforeTab = S.tabs.find(t => t.id === S.activeId)
+        await handleCmindLink(staleLink)
+        await new Promise(r => setTimeout(r, 1200))
+        const t1 = S.tabs.find(t => t.id === S.activeId)
+        await window.__cmindMove(ws + '/学习笔记/UUID目标.cmind', ws + '/X')
+        await new Promise(r => setTimeout(r, 1200))
+        S.tabs = S.tabs.filter(t => t.id !== (t1 && t1.id)) // 关闭旧标签，确保第二次是真的重新解析打开
+        await handleCmindLink(staleLink)
+        await new Promise(r => setTimeout(r, 1200))
+        const t2 = S.tabs.find(t => t.id === S.activeId)
+        log('uuid-link-check', {
+          resolvedByUuid1: !!(t1 && t1.name === 'UUID目标'),
+          resolvedByUuid2: !!(t2 && t2.name === 'UUID目标' && t2.path.endsWith('/X/UUID目标.cmind'))
+        })
         // dirty 打开场景：给当前脑图制造未保存改动，再反向移动 团队知识库 回根目录
         const MM = window.__cmindMap
         if (MM) {
