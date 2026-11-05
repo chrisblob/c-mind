@@ -3,7 +3,7 @@
  * 覆盖：当前目录新建、图片插入渲染、脑图链接树形选择、多格式导入/导出转换、git 绑定/分支/提交
  */
 import { parseImportText, buildFreeMind, buildOpml, buildMarkdown, extToKind } from './formats.js'
-import { openMap, closeContextMenu, handleCmindLink } from './store.js'
+import { openMap, closeContextMenu, handleCmindLink, refreshTree } from './store.js'
 window.__cmindUITest = async function (mode) {
   const sleepF = (ms) => new Promise(r => setTimeout(r, ms))
   if (mode === 'exporttest') {
@@ -262,6 +262,50 @@ window.__cmindUITest = async function (mode) {
     } catch (e) {
       log('import-fail', { error: String(e && e.message || e) })
     }
+    return out
+  }
+  if (mode === 'tabprobe') {
+    const S = window.__cmindStore
+    const out = { steps: [] }
+    const log = (name, data) => out.steps.push({ name, ...data })
+    const sleepP = (ms) => new Promise(r => setTimeout(r, ms))
+    // 模拟用户路径：脑图之间用 cmind:// 链接互链，靠"点链接"开出一串标签
+    const ws = S.workspace
+    for (let i = 1; i <= 12; i++) {
+      await window.cmind.invoke('fs:createFile', ws, '章节名字比较长的情况测试' + i + '.cmind', JSON.stringify({
+        format: 'c-mind', version: 1, uuid: 'probe-uuid-' + i,
+        root: { data: { text: '章节名字比较长的情况测试' + i }, children: [{ data: { text: '下一章', hyperlink: i < 12 ? 'cmind://open?uuid=probe-uuid-' + (i + 1) + '&path=' + encodeURIComponent('章节名字比较长的情况测试' + (i + 1) + '.cmind') : '', hyperlinkTitle: '' }, children: [] }] }
+      }))
+    }
+    await refreshTree(); await sleepP(600)
+    // 再造一个文件夹标签
+    await window.cmind.invoke('fs:createDir', ws, '构成')
+    await refreshTree(); await sleepP(600)
+    const first = [...document.querySelectorAll('.tree-row')].find(r => r.textContent.includes('章节名字比较长的情况测试1'))
+    if (first) { first.click(); await sleepP(1500) }
+    for (let i = 1; i <= 9; i++) { await handleCmindLink('cmind://open?uuid=probe-uuid-' + (i + 1) + '&path=%E7%AB%A0%E8%8A%82' + (i + 1) + '.cmind'); await sleepP(600) }
+    const dirRows = [...document.querySelectorAll('.tree-row')].filter(r => r.textContent.includes('构成'))
+    for (const r of dirRows.slice(0, 1)) { r.click(); await sleepP(800) }
+    await sleepP(1500)
+    const g = (sel) => { const el = document.querySelector(sel); if (!el) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height), w: Math.round(r.width) } }
+    const shot = window.__cmindShot // 由 main 进程注入（如有）
+    const mainKids = [...document.querySelector('.main').children].map(el => {
+      const r = el.getBoundingClientRect()
+      return { cls: el.className.split(' ')[0] || el.tagName, top: Math.round(r.top), h: Math.round(r.height) }
+    })
+    const sb = document.querySelector('.tabbar')
+    const style = getComputedStyle(sb)
+    log('tab-geometry', {
+      winH: window.innerHeight,
+      main: g('.main'), mainKids,
+      tabbar: g('.tabbar'),
+      tabbarStyle: { paddingTop: style.paddingTop, paddingBottom: style.paddingBottom, alignItems: style.alignItems, height: style.height, flex: style.flex },
+      tabCount: S.tabs.length,
+      tabbarScroll: { sw: sb.scrollWidth, cw: sb.clientWidth },
+      bodyKids: [...document.body.children].map(el => ({ tag: el.tagName, id: el.id, cls: String(el.className).split(' ')[0], pos: getComputedStyle(el).position, top: Math.round(el.getBoundingClientRect().top), h: Math.round(el.getBoundingClientRect().height) })),
+      shellKids: [...document.querySelector('.app-shell').children].map(el => ({ cls: String(el.className).split(' ')[0], top: Math.round(el.getBoundingClientRect().top), h: Math.round(el.getBoundingClientRect().height) })),
+      tabbarKids: [...sb.children].map(el => ({ cls: el.className.split(' ')[0] || el.tagName, top: Math.round(el.getBoundingClientRect().top), h: Math.round(el.getBoundingClientRect().height) }))
+    })
     return out
   }
   if (mode === 'focus') {

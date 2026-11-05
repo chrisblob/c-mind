@@ -528,8 +528,8 @@ function registerGitIpc() {
 /* ---------------- 窗口 ---------------- */
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 920,
+    width: Number(process.env.CMIND_WIN_W) || 1440,
+    height: Number(process.env.CMIND_WIN_H) || 920,
     minWidth: 960,
     minHeight: 640,
     title: 'C-Mind',
@@ -570,6 +570,13 @@ function createWindow() {
         const mode = process.env.CMIND_UITEST_MODE || (process.env.CMIND_UITEST_GIT === '1' ? '' : 'skipgit')
         const result = await mainWindow.webContents.executeJavaScript('window.__cmindUITest(' + (mode ? JSON.stringify(mode) : '') + ')')
         console.log('[uitest] RESULT ' + JSON.stringify(result, null, 2))
+        if (process.env.CMIND_SHOT) {
+          try {
+            const img = await mainWindow.webContents.capturePage()
+            require('fs').writeFileSync(process.env.CMIND_SHOT, img.toPNG())
+            console.log('[uitest] SHOT saved ' + process.env.CMIND_SHOT)
+          } catch (e) { console.log('[uitest] SHOT fail ' + e.message) }
+        }
       } catch (e) {
         console.error('[uitest] failed:', e)
       }
