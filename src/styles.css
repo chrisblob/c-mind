@@ -189,6 +189,18 @@ textarea { resize: vertical; min-height: 64px; }
   flex: none;
   margin-bottom: 4px;
 }
+/* 当前文件路径：禁止换行（曾把标签栏撑高，配合 flex-end 对齐产生标签上方空白） */
+.tabbar-rel {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
 
 /* ---------- 编辑器 ---------- */
 .editor-root { flex: 1; display: flex; flex-direction: column; min-height: 0; }

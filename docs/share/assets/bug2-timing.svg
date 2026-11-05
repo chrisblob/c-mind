@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="500" viewBox="0 0 960 500" font-family="-apple-system, PingFang SC, sans-serif">
+  <defs>
+    <marker id="arr2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L9,3 L0,6 z" fill="#555"/></marker>
+  </defs>
+  <rect width="960" height="500" fill="#fafbfc"/>
+  <text x="480" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1f36">坑 2：fs:move 成功之后，手里还是"旧地图"</text>
+  <text x="480" y="66" text-anchor="middle" font-size="13" fill="#6b7280">现象：修好坑 1 后链接重写依然不生效，toast 不出现</text>
+
+  <!-- 时间线 -->
+  <line x1="90" y1="110" x2="890" y2="110" stroke="#c9d1d9" stroke-width="3"/>
+  <circle cx="130" cy="110" r="7" fill="#4c6ef5"/><text x="130" y="90" text-anchor="middle" font-size="13" font-weight="600">① fs:move 成功</text>
+  <text x="130" y="135" text-anchor="middle" font-size="11" fill="#6b7280">文件已到新路径</text>
+  <circle cx="345" cy="110" r="7" fill="#4c6ef5"/><text x="345" y="90" text-anchor="middle" font-size="13" font-weight="600">② 遍历 store.tree</text>
+  <text x="345" y="135" text-anchor="middle" font-size="11" fill="#6b7280">但 tree 还是 move 之前的旧结构</text>
+  <circle cx="570" cy="110" r="7" fill="#cf222e"/><text x="570" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#cf222e">③ 读旧路径 → ENOENT</text>
+  <text x="570" y="135" text-anchor="middle" font-size="11" fill="#862d26">文件已经不在了</text>
+  <circle cx="790" cy="110" r="7" fill="#cf222e"/><text x="790" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#cf222e">④ 异常中止整个循环</text>
+  <text x="790" y="135" text-anchor="middle" font-size="11" fill="#862d26">排在后面的文件根本没被检查</text>
+
+  <!-- 中间图示 -->
+  <rect x="60" y="180" width="400" height="180" rx="10" fill="#fff" stroke="#d0d7de"/>
+  <text x="80" y="210" font-size="14" font-weight="600" fill="#cf222e">✘ 坏时序</text>
+  <text x="80" y="240" font-size="13" font-family="Menlo, monospace" fill="#24292f">await fs:move(src, dest)</text>
+  <text x="80" y="262" font-size="13" font-family="Menlo, monospace" fill="#cf222e">const fixed = await rewrite(oldRel, newRel)</text>
+  <text x="80" y="284" font-size="13" font-family="Menlo, monospace" fill="#cf222e">  ↑ 用 store.tree（旧路径）→ 读文件 ENOENT</text>
+  <text x="80" y="316" font-size="12" fill="#862d26">单个异常 = 整个重写失败（被 catch 吞掉）</text>
+  <text x="80" y="338" font-size="12" fill="#862d26">真正需要处理的 产品路线图.cmind 排在后面，没轮到</text>
+
+  <rect x="500" y="180" width="400" height="180" rx="10" fill="#f0f9f1" stroke="#87d493"/>
+  <text x="520" y="210" font-size="14" font-weight="600" fill="#0a6e4f">✔ 好时序</text>
+  <text x="520" y="240" font-size="13" font-family="Menlo, monospace" fill="#24292f">await fs:move(src, dest)</text>
+  <text x="520" y="262" font-size="13" font-family="Menlo, monospace" fill="#0a6e4f">await refreshTree()  ← 先刷新，树里已是新路径</text>
+  <text x="520" y="284" font-size="13" font-family="Menlo, monospace" fill="#0a6e4f">const fixed = await rewrite(oldRel, newRel)</text>
+  <text x="520" y="316" font-size="12" fill="#143d1e">每个文件独立 try/catch：单点失败不放大</text>
+  <text x="520" y="338" font-size="12" fill="#143d1e">toast 汇报："已同步更新 N 个文件里的脑图链接"</text>
+
+  <!-- 教训 -->
+  <rect x="60" y="390" width="840" height="80" rx="10" fill="#fff8e6" stroke="#e3c26b"/>
+  <text x="480" y="420" text-anchor="middle" font-size="15" font-weight="700" fill="#7a5b00">教训</text>
+  <text x="480" y="448" text-anchor="middle" font-size="13" fill="#4d3a00">改动世界之前拿到的"地图"，在世界变化后就作废了 —— 先刷新状态，再遍历；批量操作必须容忍单点失败</text>
+</svg>

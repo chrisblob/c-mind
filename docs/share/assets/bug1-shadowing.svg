@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" font-family="-apple-system, PingFang SC, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L9,3 L0,6 z" fill="#555"/></marker>
+  </defs>
+  <rect width="960" height="560" fill="#fafbfc"/>
+  <text x="480" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#1a1f36">坑 1：一行递归函数，被压缩器"改名"后静默失效</text>
+  <text x="480" y="66" text-anchor="middle" font-size="13" fill="#6b7280">现象：移动文件后，链接重写"成功执行"但什么都没改，控制台无任何报错</text>
+
+  <!-- 左：源码 -->
+  <rect x="40" y="95" width="420" height="150" rx="10" fill="#fff" stroke="#d0d7de"/>
+  <text x="60" y="122" font-size="14" font-weight="600" fill="#0a6e4f">✔ 源码（开发时是对的）</text>
+  <text x="60" y="150" font-size="13" fill="#24292f" font-family="Menlo, monospace">const walk = (list) => list.flatMap(n =&gt;</text>
+  <text x="60" y="170" font-size="13" fill="#24292f" font-family="Menlo, monospace">  n.type === 'dir' ? walk(n.children)</text>
+  <text x="60" y="190" font-size="13" fill="#24292f" font-family="Menlo, monospace">  : (n.isMap ? [n] : []))</text>
+  <text x="60" y="222" font-size="12" fill="#6b7280">walk 引用自己递归 ✔</text>
+
+  <!-- 箭头 -->
+  <line x1="250" y1="250" x2="250" y2="295" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="262" y="278" font-size="13" fill="#cf222e" font-weight="600">vite build（esbuild/rolldown 压缩）</text>
+
+  <!-- 右：产物 -->
+  <rect x="500" y="95" width="420" height="150" rx="10" fill="#fff" stroke="#d0d7de"/>
+  <text x="520" y="122" font-size="14" font-weight="600" fill="#cf222e">✘ 打包产物（minify 后）</text>
+  <text x="520" y="150" font-size="13" fill="#24292f" font-family="Menlo, monospace">const n = (e) =&gt; e.flatMap(n =&gt;</text>
+  <text x="520" y="170" font-size="13" fill="#cf222e" font-family="Menlo, monospace" font-weight="700">  n.type === 'dir' ? n(e.children)  ← n 已不是函数！</text>
+  <text x="520" y="190" font-size="13" fill="#24292f" font-family="Menlo, monospace">  : (e.isMap ? [e] : []))</text>
+  <text x="520" y="222" font-size="12" fill="#6b7280">外层函数被改名为 n，回调参数恰好也叫 n → 参数遮蔽了函数</text>
+
+  <!-- 后果链 -->
+  <rect x="60" y="310" width="260" height="90" rx="10" fill="#fff1f0" stroke="#f0a8a2"/>
+  <text x="190" y="345" text-anchor="middle" font-size="14" font-weight="600" fill="#cf222e">目录节点递归时 TypeError</text>
+  <text x="190" y="370" text-anchor="middle" font-size="12" fill="#862d26">"n is not a function"</text>
+  <line x1="320" y1="355" x2="370" y2="355" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="375" y="310" width="260" height="90" rx="10" fill="#fff1f0" stroke="#f0a8a2"/>
+  <text x="505" y="345" text-anchor="middle" font-size="14" font-weight="600" fill="#cf222e">被外层 try { … } catch {} 吞掉</text>
+  <text x="505" y="370" text-anchor="middle" font-size="12" fill="#862d26">静默返回 0，功能"看似正常"</text>
+  <line x1="635" y1="355" x2="685" y2="355" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="690" y="310" width="240" height="90" rx="10" fill="#fff1f0" stroke="#f0a8a2"/>
+  <text x="810" y="345" text-anchor="middle" font-size="14" font-weight="600" fill="#cf222e">测试断言失败</text>
+  <text x="810" y="370" text-anchor="middle" font-size="12" fill="#862d26">但没有任何错误可看</text>
+
+  <!-- 修复 -->
+  <rect x="60" y="430" width="840" height="100" rx="10" fill="#f0f9f1" stroke="#87d493"/>
+  <text x="480" y="458" text-anchor="middle" font-size="15" font-weight="700" fill="#0a6e4f">修复与教训</text>
+  <text x="480" y="484" text-anchor="middle" font-size="13" fill="#143d1e">① 递归函数改成具名声明 function walkMaps(...)，避免与压缩器命名空间相撞</text>
+  <text x="480" y="508" text-anchor="middle" font-size="13" fill="#143d1e">② 空 catch 是黑洞：批量操作的每个单点都要独立捕获并记录，"没有报错"≠"没有错误"</text>
+</svg>

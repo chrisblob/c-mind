@@ -27,7 +27,7 @@ async function onAdd() {
     </div>
     <button class="icon-btn tab-add" data-tip="新建脑图" data-key="⌘N" @click="onAdd">＋</button>
     <div style="flex:1"></div>
-    <div v-if="activeTab()" style="margin-bottom:6px;color:var(--text-dim);font-size:12px">
+    <div v-if="activeTab()" class="tabbar-rel" :title="activeTab().rel">
       {{ activeTab().rel }}
     </div>
   </div>

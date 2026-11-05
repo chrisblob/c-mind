@@ -264,6 +264,42 @@ window.__cmindUITest = async function (mode) {
     }
     return out
   }
+  if (mode === 'openall') {
+    const S = window.__cmindStore
+    const out = { steps: [] }
+    const log = (name, data) => out.steps.push({ name, ...data })
+    const sleepO = (ms) => new Promise(r => setTimeout(r, ms))
+    const dir = process.env.CMIND_OPEN_DIR || ''
+    // 从已加载的目录树里收集目标目录下所有脑图（含子目录），逐个打开
+    const collect = (list, prefix) => (list || []).flatMap(n => {
+      const rel = prefix ? prefix + '/' + n.name : n.name
+      if (n.type === 'dir') return collect(n.children, rel)
+      return n.isMap && (!dir || rel.startsWith(dir + '/')) ? [S.workspace + '/' + rel] : []
+    })
+    const targets = collect(S.tree, '')
+    // 再开几个文件夹标签（对齐用户场景：地图标签 + 文件夹标签混开）
+    const dirs = []
+    const collectDirs = (list, prefix, depth) => (list || []).forEach(n => {
+      const rel = prefix ? prefix + '/' + n.name : n.name
+      if (n.type === 'dir') { if (depth >= 1) dirs.push(S.workspace + '/' + rel); collectDirs(n.children, rel, depth + 1) }
+    })
+    collectDirs(S.tree, '', 0)
+    log('openall-plan', { maps: targets.length, dirs: dirs.length, dir: process.env.CMIND_OPEN_DIR })
+    for (const abs of [...targets, ...dirs]) {
+      try { await openMap(abs) } catch (e) { log('open-fail', { abs: abs.split('/').pop(), err: String(e.message || e).slice(0, 60) }) }
+      await sleepO(700)
+    }
+    await sleepO(2500)
+    const g = (sel) => { const el = document.querySelector(sel); if (!el) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height) } }
+    log('openall-geometry', {
+      winH: window.innerHeight, winW: window.innerWidth,
+      mainKids: [...document.querySelector('.main').children].map(el => ({ cls: el.className.split(' ')[0], top: Math.round(el.getBoundingClientRect().top), h: Math.round(el.getBoundingClientRect().height) })),
+      tabbar: g('.tabbar'), toolbar: g('.toolbar'),
+      tabs: S.tabs.map(t => t.name), active: (S.tabs.find(t => t.id === S.activeId) || {}).name,
+      tabbarScroll: (() => { const el = document.querySelector('.tabbar'); return { sw: el.scrollWidth, cw: el.clientWidth } })()
+    })
+    return out
+  }
   if (mode === 'tabprobe') {
     const S = window.__cmindStore
     const out = { steps: [] }

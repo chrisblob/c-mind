@@ -1,7 +1,7 @@
 {
   "name": "c-mind",
   "productName": "C-Mind",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "C-Mind 心图 — 本地优先的 macOS 脑图客户端（文件式管理 + Git 版本化 + 多格式互操作）",
   "author": {
