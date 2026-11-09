@@ -473,7 +473,7 @@ window.__cmindUITest = async function (mode) {
   let gitBind = {}
   if (!skipGit) try {
     gitBind = await window.cmind.invoke('git:bind', {
-      url: 'git@github.com:chrisblob/mind-file.git', user: 'chrisblob', token: ''
+      url: window.__cmindGitUrl || 'git@github.com:chrisblob/mind-file.git', user: 'chrisblob', token: ''
     })
     const st = await window.cmind.invoke('git:status')
     gitBind.statusAfterBind = { branch: st.branch, branches: st.branches, tracking: st.tracking }
@@ -854,7 +854,14 @@ window.__cmindUITest = async function (mode) {
   else try {
     const st1 = await window.cmind.invoke('git:status')
     gitResult.statusBeforeCommit = { branch: st1.branch, branches: st1.branches, tracking: st1.tracking }
+    // 建一个空文件夹（含一个只有 .DS_Store 的文件夹），验证提交时自动补 .gitkeep
+    await window.cmind.invoke('fs:createDir', S.workspace, '测试空文件夹')
+    await window.cmind.invoke('fs:createDir', S.workspace + '/测试空文件夹', '只有占位文件的文件夹')
+    try { await window.cmind.invoke('fs:write', S.workspace + '/测试空文件夹/只有占位文件的文件夹/.DS_Store', 'junk') } catch {}
+    gitResult.emptyDirBefore = await window.cmind.invoke('fs:read', S.workspace + '/测试空文件夹/.gitkeep').then(() => 'existed', () => 'absent')
     await window.cmind.invoke('git:commit', 'uitest: 提交脑图文件')
+    gitResult.gitkeepCreated = await window.cmind.invoke('fs:read', S.workspace + '/测试空文件夹/.gitkeep').then(() => 'yes', () => 'no')
+    gitResult.gitkeepNested = await window.cmind.invoke('fs:read', S.workspace + '/测试空文件夹/只有占位文件的文件夹/.gitkeep').then(() => 'yes', () => 'no')
     const cb = await window.cmind.invoke('git:createBranch', 'uitest-branch')
     gitResult.createBranch = cb
     const br = await window.cmind.invoke('git:branches')

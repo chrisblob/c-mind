@@ -335,7 +335,7 @@ function registerGitIpc() {
   ipcMain.handle('git:bind', async (_e, { url, user, token }) => {
     const cfg = loadConfig()
     if (!cfg.workspaceDir) throw new Error('请先设置工作区目录')
-    if (!/^https?:\/\/|^git@/i.test(url || '')) throw new Error('仓库地址需为 https:// 或 git@ 形式')
+    if (!/^https?:\/\/|^git@|^file:\/\//i.test(url || '')) throw new Error('仓库地址需为 https://、git@ 或本地 file:// 形式')
     const git = getGit()
 
     // 仅当工作区本身不是仓库、或它嵌套在其它仓库内时，才在工作区执行 init
@@ -471,6 +471,37 @@ function registerGitIpc() {
     const msg = String(message || '').trim()
     if (!msg) throw new Error('请填写提交说明')
     const git = getGit()
+    // 提交前：为所有空文件夹补 .gitkeep 占位，保证"创建的目录结构"完整入库
+    // （Git 只跟踪文件不跟踪空文件夹；目录里只有 .DS_Store 这类被忽略文件时也视为空）
+    try {
+      const root = getWorkspace()
+      if (root) {
+        const SKIP = new Set(['.git', 'node_modules'])
+        const filled = []
+        const walk = async (dir, rel) => {
+          const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])
+          const meaningful = entries.filter(e => e.name !== '.DS_Store' && e.name !== '.gitkeep')
+          // 完全为空、或只剩 .DS_Store/.gitkeep 这类不入库文件 → 都视为空，补占位
+          if (!entries.length || !meaningful.length) {
+            try {
+              await fsp.writeFile(path.join(dir, '.gitkeep'), '')
+              filled.push(rel)
+            } catch {}
+            return
+          }
+          for (const e of meaningful) {
+            if (e.isDirectory() && !SKIP.has(e.name)) await walk(path.join(dir, e.name), rel ? rel + '/' + e.name : e.name)
+          }
+        }
+        await walk(root, '')
+        if (filled.length) console.log('[git] 为空文件夹补 .gitkeep：' + filled.join(', '))
+        // 若仓库还没有 .gitignore，自动创建（忽略 macOS .DS_Store 垃圾文件）
+        try {
+          const gi = path.join(root, '.gitignore')
+          await fsp.access(gi).catch(async () => { await fsp.writeFile(gi, '.DS_Store\n') })
+        } catch {}
+      }
+    } catch {} // 占位失败不阻断提交
     await git.add('-A')
     const res = await git.commit(msg)
     return { committed: res.commit.length ? res.commit : null, summary: res.summary }
@@ -568,6 +599,8 @@ function createWindow() {
       try {
         // 安全默认：自动化自检永不触碰真实 Git 远程，除非显式 CMIND_UITEST_GIT=1
         const mode = process.env.CMIND_UITEST_MODE || (process.env.CMIND_UITEST_GIT === '1' ? '' : 'skipgit')
+        // 测试仓库地址可注入（默认仍为内置地址），避免自动化测试触碰真实远程仓库
+        await mainWindow.webContents.executeJavaScript('window.__cmindGitUrl = ' + JSON.stringify(process.env.CMIND_GIT_URL || '')).catch(() => {})
         const result = await mainWindow.webContents.executeJavaScript('window.__cmindUITest(' + (mode ? JSON.stringify(mode) : '') + ')')
         console.log('[uitest] RESULT ' + JSON.stringify(result, null, 2))
         if (process.env.CMIND_SHOT) {
