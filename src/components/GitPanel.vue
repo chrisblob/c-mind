@@ -72,7 +72,8 @@ async function push() {
     toast(`已推送 ${r.ahead || 0} 个提交到 ${r.branch}`, 'ok')
     await refresh()
   } catch (e) {
-    toast('推送失败：' + (e.message || e), 'error')
+    const m = String(e.message || e)
+    toast(m.includes('尚未绑定') ? '尚未绑定远程仓库：请先在上方填写仓库地址、用户名和 Token，点击「绑定 / 更新」后再推送' : '推送失败：' + m, 'error')
   } finally { busy.value = false }
 }
 
@@ -83,7 +84,8 @@ async function pull() {
     toast('已从 ' + r.branch + ' 拉取', 'ok')
     await refresh()
   } catch (e) {
-    toast('拉取失败：' + (e.message || e), 'error')
+    const m = String(e.message || e)
+    toast(m.includes('尚未绑定') ? '尚未绑定远程仓库：请先在上方填写仓库地址、用户名和 Token，点击「绑定 / 更新」后再拉取' : '拉取失败：' + m, 'error')
   } finally { busy.value = false }
 }
 

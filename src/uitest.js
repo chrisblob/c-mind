@@ -382,6 +382,12 @@ window.__cmindUITest = async function (mode) {
     log('img-click-open', clickOpen)
     // 激活图片节点 → 工具栏「查看图片大图」→ 弹窗缩放
     node.active(); await sleepF(250)
+    // 节点级配色：选中节点设背景色/字体色 → 数据与保存内容应同步
+    M.execCommand('SET_NODE_STYLE', node, 'fillColor', '#ff8800')
+    M.execCommand('SET_NODE_STYLE', node, 'color', '#0033aa')
+    await sleepF(400)
+    const styled = M.renderer.activeNodeList.includes(node)
+    log('node-style', { applied: node.getData('fillColor') === '#ff8800' && node.getData('color') === '#0033aa', active: styled })
     const viewBtn = qa('.toolbar button').find(b => (b.getAttribute('data-tip') || '').includes('查看图片大图'))
     viewBtn && viewBtn.click()
     await sleepF(700)
@@ -469,11 +475,14 @@ window.__cmindUITest = async function (mode) {
     await sleep(900)
   }
 
-  // ---------- 0. 先绑定远程仓库（真实用户流程：绑定 → 产内容 → 提交推送） ----------
+  // ---------- 0. 先绑定远程仓库（仓库地址由 CMIND_GIT_URL 注入，不再有硬编码默认值） ----------
   let gitBind = {}
-  if (!skipGit) try {
+  if (!window.__cmindGitUrl) {
+    gitBind = { skipped: true, reason: '未注入 CMIND_GIT_URL，跳过 git 测试' }
+    log('git-bind', gitBind)
+  } else try {
     gitBind = await window.cmind.invoke('git:bind', {
-      url: window.__cmindGitUrl || 'git@github.com:chrisblob/mind-file.git', user: 'chrisblob', token: ''
+      url: window.__cmindGitUrl, user: 'chrisblob', token: ''
     })
     const st = await window.cmind.invoke('git:status')
     gitBind.statusAfterBind = { branch: st.branch, branches: st.branches, tracking: st.tracking }
@@ -850,7 +859,7 @@ window.__cmindUITest = async function (mode) {
 
   // ---------- 4. Git：提交 → 分支 → 切回 → 推送 ----------
   let gitResult = {}
-  if (skipGit) gitResult = { skipped: true }
+  if (skipGit || !window.__cmindGitUrl) gitResult = { skipped: true, reason: window.__cmindGitUrl ? undefined : 'no CMIND_GIT_URL' }
   else try {
     const st1 = await window.cmind.invoke('git:status')
     gitResult.statusBeforeCommit = { branch: st1.branch, branches: st1.branches, tracking: st1.tracking }

@@ -449,6 +449,10 @@ kbd {
   font-size: 11px; color: #94a3b8; background: rgba(100,116,139,.08); border-radius: 6px; }
 .tree-hint .hint-dir { color: #64748b; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.icon-btn:disabled { opacity: .35; cursor: not-allowed; }
+/* 节点配色控件（label 版 icon-btn，内嵌原生取色器） */
+label.icon-btn.color-btn { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; padding: 4px 7px; }
+label.icon-btn.color-btn input[type="color"] { width: 16px; height: 16px; padding: 0; border: none; background: none; cursor: pointer; }
+label.icon-btn.color-btn:has(input:disabled) { opacity: .35; cursor: not-allowed; }
 
 /* 图片节点：悬停提示可点击看大图 */
 .canvas-holder svg image { cursor: zoom-in; }

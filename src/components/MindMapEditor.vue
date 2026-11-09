@@ -71,6 +71,54 @@ const THEME_PRESETS = {
     root: { fillColor: '#7950f2', color: '#ffffff', fontSize: 16 },
     second: { fillColor: '#343a40', color: '#ced4da', fontSize: 14 },
     node: { fillColor: '#212529', color: '#dee2e6', fontSize: 13 }
+  },
+  '天空蓝': {
+    backgroundColor: '#f4f9fd', lineColor: '#4dabf7', lineWidth: 2, lineStyle: 'curve',
+    root: { fillColor: '#1c7ed6', color: '#ffffff', fontSize: 16 },
+    second: { fillColor: '#d0ebff', color: '#1864ab', fontSize: 14 },
+    node: { fillColor: '#ffffff', color: '#2b2f3a', fontSize: 13 }
+  },
+  '樱花粉': {
+    backgroundColor: '#fdf7f9', lineColor: '#f783ac', lineWidth: 2, lineStyle: 'curve',
+    root: { fillColor: '#e64980', color: '#ffffff', fontSize: 16 },
+    second: { fillColor: '#ffdeeb', color: '#a61e4d', fontSize: 14 },
+    node: { fillColor: '#ffffff', color: '#2b2f3a', fontSize: 13 }
+  },
+  '柠檬黄': {
+    backgroundColor: '#fdfbf2', lineColor: '#fab005', lineWidth: 2, lineStyle: 'curve',
+    root: { fillColor: '#e67700', color: '#ffffff', fontSize: 16 },
+    second: { fillColor: '#fff3bf', color: '#997a00', fontSize: 14 },
+    node: { fillColor: '#ffffff', color: '#2b2f3a', fontSize: 13 }
+  },
+  '薄荷青': {
+    backgroundColor: '#f4fbfa', lineColor: '#3bc9db', lineWidth: 2, lineStyle: 'curve',
+    root: { fillColor: '#0c8599', color: '#ffffff', fontSize: 16 },
+    second: { fillColor: '#c5f6fa', color: '#0b7285', fontSize: 14 },
+    node: { fillColor: '#ffffff', color: '#2b2f3a', fontSize: 13 }
+  },
+  '胭脂红': {
+    backgroundColor: '#fdf6f6', lineColor: '#fa5252', lineWidth: 2, lineStyle: 'curve',
+    root: { fillColor: '#c92a2a', color: '#ffffff', fontSize: 16 },
+    second: { fillColor: '#ffc9c9', color: '#a61e1e', fontSize: 14 },
+    node: { fillColor: '#ffffff', color: '#2b2f3a', fontSize: 13 }
+  },
+  '咖啡棕': {
+    backgroundColor: '#faf8f5', lineColor: '#a9744f', lineWidth: 2, lineStyle: 'curve',
+    root: { fillColor: '#7f5539', color: '#ffffff', fontSize: 16 },
+    second: { fillColor: '#ede0d4', color: '#5e3d24', fontSize: 14 },
+    node: { fillColor: '#ffffff', color: '#2b2f3a', fontSize: 13 }
+  },
+  '海洋深蓝': {
+    backgroundColor: '#0f1724', lineColor: '#1c7ed6', lineWidth: 2, lineStyle: 'curve',
+    root: { fillColor: '#1971c2', color: '#ffffff', fontSize: 16 },
+    second: { fillColor: '#1e293b', color: '#a5d8ff', fontSize: 14 },
+    node: { fillColor: '#16202f', color: '#d0ebff', fontSize: 13 }
+  },
+  '石墨黑': {
+    backgroundColor: '#111213', lineColor: '#495057', lineWidth: 2, lineStyle: 'curve',
+    root: { fillColor: '#f1f3f5', color: '#212529', fontSize: 16 },
+    second: { fillColor: '#2c2e33', color: '#e9ecef', fontSize: 14 },
+    node: { fillColor: '#1c1d21', color: '#ced4da', fontSize: 13 }
   }
 }
 const themeName = ref('经典蓝')
@@ -256,6 +304,28 @@ function onThemeChange() {
 function onLayoutChange() {
   mindMap.setLayout(layoutName.value)
   scheduleSave()
+}
+
+/* ---------- 节点级配色（选中节点单独设置背景色 / 字体色） ---------- */
+function activeNodes() {
+  return (mindMap && mindMap.renderer.activeNodeList) || []
+}
+function applyNodeStyle(prop, value) {
+  const list = activeNodes()
+  if (!list.length) { toast('请先点击选中要设置颜色的节点', 'error'); return }
+  if (props.tab.readonly) { toast('查看模式下不能修改配色', 'error'); return }
+  for (const n of list) exec('SET_NODE_STYLE', n, prop, value)
+}
+const onNodeBg = (e) => applyNodeStyle('fillColor', e.target.value)
+const onNodeFont = (e) => applyNodeStyle('color', e.target.value)
+const clearNodeStyle = () => {
+  const list = activeNodes()
+  if (!list.length) { toast('请先点击选中节点', 'error'); return }
+  for (const n of list) {
+    exec('SET_NODE_STYLE', n, 'fillColor', '')
+    exec('SET_NODE_STYLE', n, 'color', '')
+  }
+  toast('已恢复主题默认配色')
 }
 
 function toggleReadonly() {
@@ -647,6 +717,14 @@ const scalePercent = computed(() => Math.round(scale.value * 100) + '%')
       <button class="icon-btn" data-tip="查看图片大图（可缩放）" :disabled="!hasImageNode" @click="openImageViewer(mindMap && mindMap.renderer.activeNodeList[0])">🔍</button>
       <button class="icon-btn" data-tip="插入链接（网页/其他脑图）" @click="openLinkDialog">🔗</button>
       <button class="icon-btn" data-tip="插入备注" @click="openNoteDialog">📝</button>
+      <div class="sep"></div>
+      <label class="icon-btn color-btn" data-tip="选中节点的背景色">
+        🎨<input type="color" :disabled="tab.readonly" @input="onNodeBg" />
+      </label>
+      <label class="icon-btn color-btn" data-tip="选中节点的字体颜色">
+        🖌<input type="color" :disabled="tab.readonly" @input="onNodeFont" />
+      </label>
+      <button class="icon-btn" data-tip="恢复选中节点的主题默认配色" :disabled="tab.readonly" @click="clearNodeStyle">♫</button>
       <div class="sep"></div>
       <select v-model="layoutName" data-tip="切换布局" @change="onLayoutChange">
         <option v-for="[v, label] in LAYOUTS" :key="v" :value="v">{{ label }}</option>
