@@ -886,6 +886,15 @@ window.__cmindUITest = async function (mode) {
     } catch (e) {
       gitResult.push = 'failed: ' + String(e.message || e)
     }
+    // 一键「提交并推送」：写一个新文件 → 应自动提交并推送，最终 ahead=0
+    try {
+      await window.cmind.invoke('fs:write', S.workspace + '/学习笔记/一键提交测试.cmind', JSON.stringify({ format: 'c-mind', version: 1, uuid: 'cp-test', layout: 'logicalStructure', root: { data: { text: '一键提交测试' }, children: [] } }))
+      const cp = await window.cmind.invoke('git:commitpush', 'uitest: 一键提交并推送')
+      const after = await window.cmind.invoke('git:status')
+      gitResult.commitPush = { committed: !!cp.committed, pushed: cp.pushed, aheadAfter: after.ahead }
+    } catch (e) {
+      gitResult.commitPush = 'failed: ' + String(e.message || e)
+    }
   } catch (e) {
     gitResult.error = String(e.message || e)
   }

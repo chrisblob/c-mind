@@ -467,44 +467,82 @@ function registerGitIpc() {
     await getGit().checkout(['-b', branch])
     return { ok: true, branch }
   })
+  // 提交前：为所有空文件夹补 .gitkeep 占位，保证"创建的目录结构"完整入库
+  // （Git 只跟踪文件不跟踪空文件夹；目录里只有 .DS_Store 这类被忽略文件时也视为空）
+  async function fillEmptyDirs() {
+    try {
+      const root = getWorkspace()
+      if (!root) return
+      const SKIP = new Set(['.git', 'node_modules'])
+      const filled = []
+      const walk = async (dir, rel) => {
+        const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])
+        const meaningful = entries.filter(e => e.name !== '.DS_Store' && e.name !== '.gitkeep')
+        // 完全为空、或只剩 .DS_Store/.gitkeep 这类不入库文件 → 都视为空，补占位
+        if (!entries.length || !meaningful.length) {
+          try {
+            await fsp.writeFile(path.join(dir, '.gitkeep'), '')
+            filled.push(rel)
+          } catch {}
+          return
+        }
+        for (const e of meaningful) {
+          if (e.isDirectory() && !SKIP.has(e.name)) await walk(path.join(dir, e.name), rel ? rel + '/' + e.name : e.name)
+        }
+      }
+      await walk(root, '')
+      if (filled.length) console.log('[git] 为空文件夹补 .gitkeep：' + filled.join(', '))
+      // 若仓库还没有 .gitignore，自动创建（忽略 macOS .DS_Store 垃圾文件）
+      try {
+        const gi = path.join(root, '.gitignore')
+        await fsp.access(gi).catch(async () => { await fsp.writeFile(gi, '.DS_Store\n') })
+      } catch {}
+    } catch {} // 占位失败不阻断提交
+  }
   ipcMain.handle('git:commit', async (_e, message) => {
     const msg = String(message || '').trim()
     if (!msg) throw new Error('请填写提交说明')
     const git = getGit()
-    // 提交前：为所有空文件夹补 .gitkeep 占位，保证"创建的目录结构"完整入库
-    // （Git 只跟踪文件不跟踪空文件夹；目录里只有 .DS_Store 这类被忽略文件时也视为空）
-    try {
-      const root = getWorkspace()
-      if (root) {
-        const SKIP = new Set(['.git', 'node_modules'])
-        const filled = []
-        const walk = async (dir, rel) => {
-          const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])
-          const meaningful = entries.filter(e => e.name !== '.DS_Store' && e.name !== '.gitkeep')
-          // 完全为空、或只剩 .DS_Store/.gitkeep 这类不入库文件 → 都视为空，补占位
-          if (!entries.length || !meaningful.length) {
-            try {
-              await fsp.writeFile(path.join(dir, '.gitkeep'), '')
-              filled.push(rel)
-            } catch {}
-            return
-          }
-          for (const e of meaningful) {
-            if (e.isDirectory() && !SKIP.has(e.name)) await walk(path.join(dir, e.name), rel ? rel + '/' + e.name : e.name)
-          }
-        }
-        await walk(root, '')
-        if (filled.length) console.log('[git] 为空文件夹补 .gitkeep：' + filled.join(', '))
-        // 若仓库还没有 .gitignore，自动创建（忽略 macOS .DS_Store 垃圾文件）
-        try {
-          const gi = path.join(root, '.gitignore')
-          await fsp.access(gi).catch(async () => { await fsp.writeFile(gi, '.DS_Store\n') })
-        } catch {}
-      }
-    } catch {} // 占位失败不阻断提交
+    await fillEmptyDirs()
     await git.add('-A')
     const res = await git.commit(msg)
     return { committed: res.commit.length ? res.commit : null, summary: res.summary }
+  })
+  ipcMain.handle('git:commitpush', async (_e, message) => {
+    const msg = String(message || '').trim()
+    const cfg = loadConfig()
+    if (!cfg.git) throw new Error('尚未绑定远程仓库：请先在上方填写仓库地址、用户名和 Token 并绑定')
+    const git = getGit()
+    const out = { committed: null, pushed: false, branch: '', ahead: 0 }
+    // ① 有变更才提交（无变更时跳过，避免空提交报错）
+    const st0 = await git.status()
+    if (st0.files.length) {
+      if (!msg) throw new Error('请填写提交说明')
+      await fillEmptyDirs()
+      await git.add('-A')
+      const res = await git.commit(msg)
+      out.committed = res.commit && res.commit.length ? res.commit : null
+    }
+    // ② 推送（含刚才的提交）
+    const s = await git.status()
+    const branch = s.current || 'main'
+    out.branch = branch
+    if (s.ahead > 0 || !s.tracking) {
+      try {
+        await git.push([tokenUrl(cfg, cfg.git.remote), branch])
+        if (!s.tracking) {
+          try {
+            await git.fetch(['origin', branch])
+            await git.branch([`--set-upstream-to=origin/${branch}`, branch])
+          } catch {}
+        }
+        out.pushed = true
+        out.ahead = s.ahead || 0
+      } catch (err) {
+        throw friendlyGitError(err)
+      }
+    }
+    return out
   })
   ipcMain.handle('git:push', async () => {
     const cfg = loadConfig()

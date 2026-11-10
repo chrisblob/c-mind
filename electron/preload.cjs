@@ -10,7 +10,7 @@ const ALLOWED = new Set([
   'fs:rename', 'fs:move', 'fs:delete', 'fs:listMaps',
   'os:openExternal', 'os:openPath', 'os:openItem',
   'import:open', 'export:save',
-  'git:bind', 'git:unbind', 'git:status', 'git:commit', 'git:push', 'git:pull', 'git:log',
+  'git:bind', 'git:unbind', 'git:status', 'git:commit', 'git:commitpush', 'git:push', 'git:pull', 'git:log',
   'git:branches', 'git:checkout', 'git:createBranch', 'git:deleteBranch'
 ])
 

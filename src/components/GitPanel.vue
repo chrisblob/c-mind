@@ -57,11 +57,27 @@ async function commit() {
   busy.value = true
   try {
     await api('git:commit', message.value)
-    toast('已提交全部变更', 'ok')
+    toast('已提交（仅存本地），别忘了点「仅推送」上传到 GitHub', 'ok')
     message.value = ''
     await refresh()
   } catch (e) {
     toast('提交失败：' + (e.message || e), 'error')
+  } finally { busy.value = false }
+}
+
+async function commitAndPush() {
+  busy.value = true
+  try {
+    const r = await api('git:commitpush', message.value)
+    message.value = ''
+    if (r.committed) toast(`已提交 ${r.committed.slice(0, 7)} 并推送 ${r.ahead || 0} 个提交到 ${r.branch}`, 'ok')
+    else if (r.pushed) toast(`已推送 ${r.ahead || 0} 个提交到 ${r.branch}`, 'ok')
+    else toast('没有需要提交的变更（已与远程同步）')
+    await refresh()
+  } catch (e) {
+    const m = String(e.message || e)
+    toast(m.includes('尚未绑定') ? '尚未绑定远程仓库：请先在上方填写仓库地址、用户名和 Token，点击「绑定 / 更新」后再提交' : '提交并推送失败：' + m, 'error')
+    await refresh()
   } finally { busy.value = false }
 }
 
@@ -179,11 +195,13 @@ async function newBranch() {
           <label>提交说明</label>
           <input type="text" v-model="message" placeholder="本次改了什么…" @keydown.enter="commit" />
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap">
-          <button class="primary" :disabled="busy || !message.trim()" @click="commit">提交</button>
-          <button :disabled="busy" @click="push">推送</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <button class="primary" :disabled="busy || !message.trim()" @click="commitAndPush" data-tip="一次完成：提交 + 推送到 GitHub">提交并推送</button>
+          <button :disabled="busy || !message.trim()" @click="commit">仅提交</button>
+          <button :disabled="busy" @click="push">仅推送</button>
           <button :disabled="busy" @click="pull">拉取</button>
         </div>
+        <p class="hint" v-if="status.tracking && status.ahead > 0" style="color:#e8590c">有 {{ status.ahead }} 个提交待推送，点「提交并推送」或「仅推送」上传到 GitHub</p>
       </div>
       <div class="git-section" v-else-if="status">
         <h4>状态</h4>
