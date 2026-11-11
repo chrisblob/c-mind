@@ -482,7 +482,7 @@ window.__cmindUITest = async function (mode) {
     log('git-bind', gitBind)
   } else try {
     gitBind = await window.cmind.invoke('git:bind', {
-      url: window.__cmindGitUrl, user: 'chrisblob', token: ''
+      url: window.__cmindGitUrl, user: 'cmind-uitest', token: ''
     })
     const st = await window.cmind.invoke('git:status')
     gitBind.statusAfterBind = { branch: st.branch, branches: st.branches, tracking: st.tracking }
